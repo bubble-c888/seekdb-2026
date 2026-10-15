@@ -28,6 +28,8 @@ def main():
     parser.add_argument("--target")
     parser.add_argument("--target-dir", required=True)
     parser.add_argument("--output", required=True)
+    parser.add_argument("cargo_args", nargs="*",
+                        help="extra arguments for cargo build, given after --")
     args = parser.parse_args()
     workspace = Path(__file__).resolve().parent
     exports = json.loads((workspace / "exports.json").read_text())
@@ -38,6 +40,7 @@ def main():
                "--target-dir", str(target_dir), "--message-format=json-render-diagnostics"]
     if args.target:
         command.extend(["--target", args.target])
+    command.extend(args.cargo_args)
     libraries = {}
     build_dirs = {}
     # Preserve inherited GNU Make jobserver descriptors when CMake provides them.

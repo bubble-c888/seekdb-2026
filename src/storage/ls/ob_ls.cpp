@@ -462,7 +462,7 @@ int ObLS::start_local_log_(const int64_t deadline_us, const bool activate_handle
     log_handler_.set_local_append_enabled(true);
     if (!activate_handlers) {
       is_local_append_mode_ = true;
-    } else if (OB_FAIL(local_log_handler_set_.activate())) {
+    } else if (OB_FAIL(activate_local_append_())) {
       log_handler_.set_local_append_enabled(false);
     } else {
       is_local_append_mode_ = true;

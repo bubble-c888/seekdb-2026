@@ -17,7 +17,7 @@
 #define USING_LOG_PREFIX STORAGE
 
 #include "ob_tablet_block_aggregated_info.h"
-#include "storage/slog_ckpt/ob_linked_macro_block_writer.h"
+#include "storage/blockstore/ob_linked_macro_block_writer.h"
 #include "storage/tablet/ob_tablet.h"
 
 namespace oceanbase

@@ -193,7 +193,6 @@ SHARE_UNITY_GROUPS = [
             "src/share/object/ob_array_cast.cpp",
             "src/share/rc/ob_context.cpp",
             "src/share/rc/ob_server_runtime.cpp",
-            "src/share/server_snapshot/ob_server_snapshot_id.cpp",
             "src/share/system_variable/ob_sys_var_meta.cpp",
             "src/share/system_variable/ob_system_variable_init.cpp",
             "src/share/ob_lob_access_utils.cpp",

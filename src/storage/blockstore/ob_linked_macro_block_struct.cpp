@@ -16,8 +16,7 @@
 
 #define USING_LOG_PREFIX STORAGE
 
-#include "storage/slog_ckpt/ob_linked_macro_block_struct.h"
-
+#include "storage/blockstore/ob_linked_macro_block_struct.h"
 
 namespace oceanbase
 {
@@ -26,7 +25,6 @@ namespace storage
 {
 
 using namespace blocksstable;
-
 
 int ObLinkedMacroBlockHeader::serialize(char *buf, const int64_t buf_len, int64_t &pos) const
 {
@@ -66,56 +64,5 @@ int ObLinkedMacroBlockHeader::deserialize(const char *buf, const int64_t data_le
   return ret;
 }
 
-ObMetaBlockListHandle::ObMetaBlockListHandle()
-  : meta_handles_(), cur_handle_pos_(0)
-{
-  meta_handles_[0].reset();
-  meta_handles_[1].reset();
-}
-
-ObMetaBlockListHandle::~ObMetaBlockListHandle()
-{
-  reset();
-}
-
-int ObMetaBlockListHandle::add_macro_blocks(const ObIArray<blocksstable::MacroBlockId> &block_list)
-{
-  int ret = OB_SUCCESS;
-  ObStorageObjectsHandle &new_handle = meta_handles_[1 - cur_handle_pos_];
-  for (int64_t i = 0; OB_SUCC(ret) && i < block_list.count(); ++i) {
-    if (OB_FAIL(new_handle.add(block_list.at(i)))) {
-    }
-  }
-  if (OB_FAIL(ret)) {
-    reset_new_handle();
-  } else {
-    switch_handle();
-  }
-  return ret;
-}
-
-void ObMetaBlockListHandle::reset()
-{
-  cur_handle_pos_ = 0;
-  meta_handles_[0].reset();
-  meta_handles_[1].reset();
-}
-
-
-const ObIArray<MacroBlockId> &ObMetaBlockListHandle::get_meta_block_list() const
-{
-  return meta_handles_[cur_handle_pos_].get_macro_id_list();
-}
-
-void ObMetaBlockListHandle::switch_handle()
-{
-  meta_handles_[cur_handle_pos_].reset();
-  cur_handle_pos_ = 1 - cur_handle_pos_;
-}
-
-void ObMetaBlockListHandle::reset_new_handle()
-{
-  meta_handles_[1 - cur_handle_pos_].reset();
-}
-}  // end namespace storage
-}  // end namespace oceanbase
+} // namespace storage
+} // namespace oceanbase

@@ -22,7 +22,7 @@
 #include "share/ls/ob_restore_status.h"
 #include "logservice/ob_log_service.h"
 #include "storage/tx/ob_trans_service.h"
-#include "storage/meta_store/ob_server_storage_meta_service.h"
+#include "storage/meta_store/storage_meta_service.h"
 #include "storage/meta_store/ob_local_storage_meta_service.h"
 #include "storage/tx/ob_trans_service.h"
 #include "share/ob_share_util.h"
@@ -289,7 +289,7 @@ int ObLSService::post_create_ls_(const bool is_restore, ObLS *ls)
   return ret;
 }
 
-int ObLSService::replay_create_ls(const int64_t ls_epoch, const ObLSMeta &ls_meta)
+int ObLSService::replay_create_ls(const ObLSMeta &ls_meta)
 {
   int ret = OB_SUCCESS;
   lib::ObMutexGuard change_guard(change_lock_);
@@ -297,27 +297,13 @@ int ObLSService::replay_create_ls(const int64_t ls_epoch, const ObLSMeta &ls_met
     ret = OB_NOT_INIT;
   } else if (OB_UNLIKELY(!ls_meta.is_valid())) {
     ret = OB_INVALID_ARGUMENT;
-  } else if (OB_FAIL(replay_create_ls_(ls_epoch, ls_meta))) {
+  } else if (OB_FAIL(replay_create_ls_(ls_meta))) {
   }
 
   return ret;
 }
 
-int ObLSService::replay_update_ls(const ObLSMeta &ls_meta)
-{
-  int ret = OB_SUCCESS;
-
-  if (IS_NOT_INIT) {
-    ret = OB_NOT_INIT;
-  } else if (OB_UNLIKELY(!ls_meta.is_valid())) {
-    ret = OB_INVALID_ARGUMENT;
-  } else if (OB_FAIL(replay_update_ls_(ls_meta))) {
-  }
-
-  return ret;
-}
-
-int ObLSService::gc_ls_after_replay_slog()
+int ObLSService::finish_ls_recovery()
 {
   // NOTE: we only gc the ls that not create finished or removed.
   // the migrate failed ls will be gc at ObGarbageCollector.
@@ -385,17 +371,7 @@ int ObLSService::online_ls()
   return ret;
 }
 
-int ObLSService::replay_update_ls_(const ObLSMeta &ls_meta)
-{
-  int ret = OB_SUCCESS;
-  ObLS *ls = nullptr;
-  if (OB_FAIL(get_ls(ls))) {
-  } else if (OB_FAIL(ls->set_ls_meta(ls_meta))) {
-  }
-  return ret;
-}
-
-int ObLSService::replay_create_ls_(const int64_t ls_epoch, const ObLSMeta &ls_meta)
+int ObLSService::replay_create_ls_(const ObLSMeta &ls_meta)
 {
   int ret = OB_SUCCESS;
   ObLS *ls = nullptr;
@@ -404,9 +380,8 @@ int ObLSService::replay_create_ls_(const int64_t ls_epoch, const ObLSMeta &ls_me
   if (OB_SUCCESS == (ret = get_ls(ls))) {
     ObLSLockGuard lock_ls(ls);
     if (OB_FAIL(ls->set_ls_meta(ls_meta))) {
-    } else if (OB_FAIL(ls->set_ls_epoch(ls_epoch))) {
     } else {
-      LOG_INFO("updated existing ls for replay", K(ls_epoch), K(ls_meta));
+      LOG_INFO("updated existing ls for replay", K(ls_meta));
     }
   } else if (OB_LS_NOT_EXIST != ret) {
     LOG_WARN("fail to get ls before replay create", K(ret), K(ls_meta));
@@ -419,7 +394,6 @@ int ObLSService::replay_create_ls_(const int64_t ls_epoch, const ObLSMeta &ls_me
     state = ObLSCreateState::CREATE_STATE_LS_ALLOCATED;
     ObLSLockGuard lock_ls(ls);
     if (OB_FAIL(ls->set_ls_meta(ls_meta))) {
-    } else if (OB_FAIL(ls->set_ls_epoch(ls_epoch))) {
     } else if (OB_FAIL(publish_ls_(ls))) {
     } else if (FALSE_IT(state = ObLSCreateState::CREATE_STATE_PUBLISHED)) {
     } else if (OB_FAIL(ls->load_ls())) {
@@ -597,9 +571,9 @@ int ObLSService::create_ls_(const ObCreateLSCommonArg &arg)
   int64_t process_point = 0;
   if (IS_NOT_INIT) {
     ret = OB_NOT_INIT;
-  } else if (OB_UNLIKELY(!SERVER_STORAGE_META_SERVICE.is_started())) {
+  } else if (OB_UNLIKELY(!STORAGE_META_SERVICE.is_started())) {
     ret = OB_NOT_RUNNING;
-    LOG_WARN("ls service does not service before slog replay finished", K(ret));
+    LOG_WARN("ls service does not service before local metadata recovery finishes", K(ret));
   } else if (OB_BREAK_FAIL(ObShareUtil::get_abs_timeout(DEFAULT_LOCK_TIMEOUT /* default timeout */,
                                                   abs_timeout_ts))) {
   } else {
@@ -622,7 +596,6 @@ int ObLSService::create_ls_(const ObCreateLSCommonArg &arg)
       if (OB_BREAK_FAIL(publish_ls_(ls))) {
         LOG_WARN("publish log stream failed", K(ret), K(ls_meta));
       } else if (FALSE_IT(state = ObLSCreateState::CREATE_STATE_PUBLISHED)) {
-      } else if (OB_FAIL(ls->set_ls_epoch(0))) {
       } else if (OB_BREAK_FAIL(ls->create_ls(arg.palf_base_info_))) {
         LOG_WARN("enable ls palf failed", K(ret), K(ls_meta));
       } else if (FALSE_IT(state = ObLSCreateState::CREATE_STATE_PALF_ENABLED)) {

@@ -17,7 +17,7 @@
 #define USING_LOG_PREFIX STORAGE
 
 #include "config_bridge.h"
-#include "storage/slog_ckpt/ob_linked_macro_block_reader.h"
+#include "storage/blockstore/ob_linked_macro_block_reader.h"
 
 namespace oceanbase
 {

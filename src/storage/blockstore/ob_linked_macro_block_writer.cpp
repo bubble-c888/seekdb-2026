@@ -19,7 +19,7 @@
 #include "config_bridge.h"
 #include "share/ob_server_struct.h"
 
-#include "storage/slog_ckpt/ob_linked_macro_block_writer.h"
+#include "storage/blockstore/ob_linked_macro_block_writer.h"
 
 namespace oceanbase
 {

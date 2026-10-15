@@ -84,10 +84,6 @@ public:
       const ObStorageObjectOpt &opt,
       const ObStorageObjectWriteInfo &write_info,
       ObStorageObjectHandle &object_handle);
-  int get_object_size(
-      const MacroBlockId &object_id,
-      const int64_t ls_epoch,
-      int64_t &object_size) const;
   int64_t get_macro_object_size() const { return macro_object_size_; }
   int inc_ref(const MacroBlockId &object_id) const;
   int dec_ref(const MacroBlockId &object_id) const;
@@ -97,8 +93,6 @@ public:
       const int64_t new_device_disk_percentage,
       const int64_t reserved_size);
   int check_disk_space_available();
-  int update_super_block(const common::ObLogCursor &replay_start_point,
-                         const blocksstable::MacroBlockId &runtime_meta_entry);
 
   static ObObjectManager &get_instance();
 

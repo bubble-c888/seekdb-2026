@@ -14,12 +14,11 @@
  * limitations under the License.
  */
 
-#ifndef OB_STORAGE_CKPT_LINKED_MARCO_BLOCK_READER_H_
-#define OB_STORAGE_CKPT_LINKED_MARCO_BLOCK_READER_H_
+#pragma once
 
 #include "storage/blocksstable/ob_block_sstable_struct.h"
 #include "storage/blocksstable/ob_macro_block_handle.h"
-#include "storage/slog_ckpt/ob_linked_macro_block_struct.h"
+#include "storage/blockstore/ob_linked_macro_block_struct.h"
 #include "storage/meta_mem/ob_meta_obj_struct.h"
 
 namespace oceanbase
@@ -117,5 +116,3 @@ private:
 
 }  // end namespace storage
 }  // end namespace oceanbase
-
-#endif  // OB_STORAGE_CKPT_LINKED_MARCO_BLOCK_READER_H_

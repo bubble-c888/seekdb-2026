@@ -407,16 +407,7 @@ private:
       storage::ObTabletHandle &handle,
       common::hash::ObHashSet<MacroBlockId, common::hash::NoPthreadDefendMode> &macro_id_set,
       ObMacroBlockMarkerStatus &tmp_status);
-  int mark_local_checkpoint_blocks(
-      MacroBlkIdMap &mark_info,
-      common::hash::ObHashSet<MacroBlockId, common::hash::NoPthreadDefendMode> &macro_id_set,
-      storage::ObLocalStorageMetaService &meta_service,
-      ObMacroBlockMarkerStatus &tmp_status);
   int mark_tmp_file_blocks(
-      MacroBlkIdMap &mark_info,
-      common::hash::ObHashSet<MacroBlockId, common::hash::NoPthreadDefendMode> &macro_id_set,
-      ObMacroBlockMarkerStatus &tmp_status);
-  int mark_server_meta_blocks(
       MacroBlkIdMap &mark_info,
       common::hash::ObHashSet<MacroBlockId, common::hash::NoPthreadDefendMode> &macro_id_set,
       ObMacroBlockMarkerStatus &tmp_status);

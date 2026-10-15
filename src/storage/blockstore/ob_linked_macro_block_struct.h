@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-#ifndef OB_STORAGE_CKPT_LINKED_MARCO_BLOCK_STRUCT_H_
-#define OB_STORAGE_CKPT_LINKED_MARCO_BLOCK_STRUCT_H_
+#pragma once
 
 #include "lib/utility/ob_print_utils.h"
 #include "storage/blocksstable/ob_macro_block_id.h"
@@ -102,24 +101,5 @@ struct ObLinkedMacroBlockItemHeader final
   int32_t payload_crc_;
 };
 
-class ObMetaBlockListHandle final
-{
-public:
-  ObMetaBlockListHandle();
-  ~ObMetaBlockListHandle();
-  int add_macro_blocks(const common::ObIArray<blocksstable::MacroBlockId> &block_list);
-  void reset();
-  const common::ObIArray<blocksstable::MacroBlockId> &get_meta_block_list() const;
-private:
-  void switch_handle();
-  void reset_new_handle();
-private:
-  static const int64_t META_BLOCK_HANDLE_CNT = 2;
-  blocksstable::ObStorageObjectsHandle meta_handles_[META_BLOCK_HANDLE_CNT];
-  int64_t cur_handle_pos_;
-};
-
 }  // end namespace storage
 }  // end namespace oceanbase
-
-#endif  // OB_STORAGE_CKPT_LINKED_MARCO_BLOCK_STRUCT_H_

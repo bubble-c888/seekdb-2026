@@ -16,6 +16,7 @@
 
 #define USING_LOG_PREFIX STORAGE
 
+#include "share/ob_io_device_helper.h"
 #include "ob_object_manager.h"
 #include "storage/meta_store/ob_local_storage_meta_service.h"
 
@@ -230,46 +231,6 @@ int ObObjectManager::check_disk_space_available()
   int ret = OB_SUCCESS;
   if (IS_NOT_INIT) {
     ret = OB_NOT_INIT;
-  }
-  return ret;
-}
-
-int ObObjectManager::update_super_block(const common::ObLogCursor &replay_start_point,
-                                        const blocksstable::MacroBlockId &runtime_meta_entry)
-{
-  int ret = OB_SUCCESS;
-  if (IS_NOT_INIT) {
-    ret = OB_NOT_INIT;
-  } else {
-    SpinWLockGuard guard(lock_);
-    HEAP_VAR(ObServerSuperBlock, tmp_super_block) {
-      tmp_super_block = super_block_;
-      tmp_super_block.body_.modify_timestamp_ = ObTimeUtility::current_time();
-      tmp_super_block.body_.replay_start_point_ = replay_start_point;
-      tmp_super_block.body_.runtime_meta_entry_ = runtime_meta_entry;
-      if (OB_FAIL(tmp_super_block.construct_header())) {
-      } else if (OB_FAIL(OB_SERVER_BLOCK_MGR.write_super_block(tmp_super_block, super_block_buf_holder_))) {
-      } else if (OB_FAIL(LOCAL_DEVICE_INSTANCE.fsync_block())) {
-      } else {
-        super_block_ = tmp_super_block;
-      }
-    }
-  }
-  return ret;
-}
-
-int ObObjectManager::get_object_size(
-    const MacroBlockId &object_id,
-    const int64_t ls_epoch,
-    int64_t &object_size) const
-{
-  int ret = OB_SUCCESS;
-  if (IS_NOT_INIT) {
-    ret = OB_NOT_INIT;
-  } else if (OB_UNLIKELY(!object_id.is_valid())) {
-    ret = OB_INVALID_ARGUMENT;
-  } else {
-    object_size = get_macro_object_size();
   }
   return ret;
 }

@@ -47,7 +47,7 @@
 #include "share/ob_merge_info.h"
 #include "common/ob_data_version_mgr.h"
 #include "share/ob_column_checksum_error_operator.h"
-#include "storage/meta_store/ob_server_storage_meta_service.h"
+#include "storage/meta_store/storage_meta_service.h"
 #include "share/ob_server_struct.h"    // GCTX
 #include "storage/tx_storage/ob_ls_service.h"  // ObLSService
 #include "storage/ls/ob_ls.h"
@@ -726,7 +726,7 @@ int ObService::get_server_resource_info(share::ObServerResourceInfo &resource_in
   } else if (OB_FAIL(::oceanbase::share::server_service<::oceanbase::omt::ObServerRuntimeController>()->get_server_allocated_resource(svr_res_assigned))) {
   } else if (OB_FAIL(log_block_mgr->get_disk_usage(clog_in_use_size_byte))) {
   } else if (FALSE_IT(clog_total_size_byte = log_block_mgr->get_log_disk_size())) {
-  } else if (OB_FAIL(SERVER_STORAGE_META_SERVICE.get_reserved_size(reserved_size))) {
+  } else if (OB_FAIL(STORAGE_META_SERVICE.get_reserved_size(reserved_size))) {
   } else {
     // cpu
     resource_info.cpu_ = get_cpu_count();

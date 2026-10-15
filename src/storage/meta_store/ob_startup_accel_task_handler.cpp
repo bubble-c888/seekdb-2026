@@ -15,7 +15,7 @@
  */
 
 #define USING_LOG_PREFIX SERVER
-#include "storage/slog_ckpt/ob_startup_accel_task_handler.h"
+#include "storage/meta_store/ob_startup_accel_task_handler.h"
 
 namespace oceanbase
 {

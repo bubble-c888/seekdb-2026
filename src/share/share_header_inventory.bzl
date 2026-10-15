@@ -222,7 +222,6 @@ SHARE_PUBLIC_HEADER_ROOTS = [
     "schema/ob_user_sql_service.h",
     "scn.h",
     "semistruct/ob_sub_column_path.h",
-    "server_snapshot/ob_server_snapshot_id.h",
     "session/ob_local_session_var.h",
     "statement/ob_stmt_type.h",
     "storage/local_store.h",
@@ -384,7 +383,6 @@ SHARE_PRIVATE_HEADERS = [
     "schema/ob_schema_macro_define.h",
     "schema/ob_table_iter.h",
     "storage/ob_merge_info_table_storage.h",
-    "unit/ob_server_resource_config.h",
 ]
 
 SHARE_IMPLEMENTATION_HEADERS = (

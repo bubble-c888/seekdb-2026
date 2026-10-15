@@ -20,8 +20,8 @@
 #include "ob_sstable_meta_info.h"
 #include "storage/blocksstable/ob_macro_block_reader.h"
 #include "storage/blocksstable/index_block/ob_index_block_row_scanner.h"
-#include "storage/slog_ckpt/ob_linked_macro_block_writer.h"
-#include "storage/slog_ckpt/ob_linked_macro_block_reader.h"
+#include "storage/blockstore/ob_linked_macro_block_writer.h"
+#include "storage/blockstore/ob_linked_macro_block_reader.h"
 #include "storage/tablet/ob_tablet_create_sstable_param.h"
 
 namespace oceanbase

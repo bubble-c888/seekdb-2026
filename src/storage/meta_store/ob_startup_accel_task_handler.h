@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-#ifndef OCEANBASE_STORAGE_OB_STARTUP_ACCEL_TASK_HANDLER_H_
-#define OCEANBASE_STORAGE_OB_STARTUP_ACCEL_TASK_HANDLER_H_
+#pragma once
 
 #include "lib/ob_define.h"
 #include "lib/thread/ob_simple_thread_pool.h"
@@ -61,5 +60,3 @@ private:
 
 } // storage
 } // oceanbase
-
-#endif

@@ -137,13 +137,15 @@ static int init_log_service(
   const auto *runtime = share::server_runtime();
   const share::ObServerModuleInitCtx *module_init_ctx =
       OB_ISNULL(runtime) ? nullptr : runtime->get_module_init_ctx();
-  if (OB_ISNULL(module_init_ctx) || OB_ISNULL(::oceanbase::share::server_service<::oceanbase::logservice::ObServerLogBlockMgr>())) {
+  if (OB_ISNULL(module_init_ctx) || OB_ISNULL(GCTX.local_store_)
+      || OB_ISNULL(::oceanbase::share::server_service<::oceanbase::logservice::ObServerLogBlockMgr>())) {
     ret = OB_ERR_UNEXPECTED;
     SERVER_LOG(WARN, "log service composition is incomplete", KR(ret),
         KP(module_init_ctx), KP(::oceanbase::share::server_service<::oceanbase::logservice::ObServerLogBlockMgr>()));
   } else if (OB_FAIL(ObLogService::server_module_init(
       log_service,
       module_init_ctx->palf_options_,
+      *GCTX.local_store_,
       module_init_ctx->clog_dir_,
       OB_FILE_SYSTEM_ROUTER.get_clog_dir(),
       GCTX.self_addr(),

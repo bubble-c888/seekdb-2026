@@ -41,6 +41,7 @@ public:
     version_ = MACRO_BLOCK_ID_VERSION;
   }
   bool is_valid() const;
+  bool is_empty_list_entry() const { return *this == EMPTY_LIST_ENTRY; }
 
   uint64_t hash() const;
   int hash(uint64_t &hash_val) const;
@@ -82,6 +83,7 @@ public:
 
 public:
   static constexpr int64_t MACRO_BLOCK_ID_VERSION = 1;
+  static const MacroBlockId EMPTY_LIST_ENTRY;
   static constexpr int64_t EMPTY_ENTRY_BLOCK_INDEX = -1;
   static constexpr int64_t AUTONOMIC_BLOCK_INDEX = -1;
   static constexpr uint64_t SF_BIT_WRITE_SEQ = 60;

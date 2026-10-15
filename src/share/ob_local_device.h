@@ -156,8 +156,7 @@ public:
     const int64_t offset,
     const int64_t size,
     void *buf,
-    int64_t &read_size,
-    common::ObIODPreadChecker *checker = nullptr) override;
+    int64_t &read_size) override;
   virtual int pwrite(
     const common::ObIOFd &fd,
     const int64_t offset,
@@ -222,7 +221,7 @@ public:
   virtual int check_write_limited() const override;
 
 public:
-  static const int64_t RESERVED_BLOCK_INDEX = 2; // the first 2 blocks is used for super block
+  static const int64_t RESERVED_BLOCK_INDEX = 1; // block zero holds the immutable file header
 
 private:
   int get_data_disk_used_percentage_(

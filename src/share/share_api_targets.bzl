@@ -465,10 +465,6 @@ _SHARE_SEMANTIC_HEADER_TARGETS = {
     "redo_log_storage": struct(
         hdrs = [
             "ob_local_device.h",
-            "redolog/ob_log_definition.h",
-            "redolog/ob_log_file_group.h",
-            "redolog/ob_log_file_handler.h",
-            "redolog/ob_log_policy.h",
         ],
         deps = [
             ":io_device_interface",

@@ -48,7 +48,6 @@ extern const char *BLOCK_SSTBALE_FILE_NAME;
 
 //block sstable header magic number;
 const int64_t MICRO_BLOCK_HEADER_MAGIC = 1005;
-const int64_t SERVER_SUPER_BLOCK_MAGIC = 1018;
 const int64_t LINKED_MACRO_BLOCK_HEADER_MAGIC = 1019;
 
 const int64_t MICRO_BLOCK_HEADER_VERSION = 3;

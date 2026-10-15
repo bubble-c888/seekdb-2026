@@ -24,12 +24,6 @@
 
 namespace oceanbase
 {
-namespace blocksstable
-{
-class ObBaseStorageLogger;
-class ObSuperBlockMetaEntry;
-}
-
 namespace storage
 {
 class ObLS;

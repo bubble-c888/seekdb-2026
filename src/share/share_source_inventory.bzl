@@ -343,19 +343,6 @@ SHARE_UNITY_GROUPS = [
         external_srcs = [],
     ),
     struct(
-        name = "ob_share_redolog_0",
-        language = "c++",
-        srcs = [
-            "src/share/redolog/ob_clog_switch_write_callback.cpp",
-            "src/share/redolog/ob_log_file_group.cpp",
-            "src/share/redolog/ob_log_file_handler.cpp",
-            "src/share/redolog/ob_log_file_reader.cpp",
-            "src/share/redolog/ob_log_policy.cpp",
-        ],
-        generated_srcs = [],
-        external_srcs = [],
-    ),
-    struct(
         name = "ob_share_resource_0",
         language = "c++",
         srcs = [

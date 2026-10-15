@@ -19,7 +19,6 @@ OBLIB_UNITY_GROUPS = {
                 "src/oblib/common/ob_tablet_id.cpp",
                 "src/oblib/common/ob_timeout_ctx.cpp",
                 "src/oblib/common/ob_version_def.cpp",
-                "src/oblib/common/ob_data_version_mgr.cpp",
             ],
             generated_srcs = [
             ],

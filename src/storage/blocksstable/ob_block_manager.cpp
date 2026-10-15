@@ -85,40 +85,6 @@ int calc_auto_extend_size(int64_t &cur_datafile_size,
 } // namespace
 
 /**
- * --------------------------------ObSuperBlockPreadChecker------------------------------------
- */
-int ObSuperBlockPreadChecker::do_check(void *read_buf,
-                                       const int64_t read_size) {
-  int ret = OB_SUCCESS;
-  int64_t pos = 0;
-
-  HEAP_VAR(ObServerSuperBlock, tmp_super_block) {
-    if (OB_FAIL(
-            tmp_super_block.deserialize((char *)read_buf, read_size, pos))) {
-    } else if (OB_UNLIKELY(!tmp_super_block.is_valid())) {
-      ret = OB_INVALID_ARGUMENT;
-    }
-
-    if (OB_FAIL(ret)) {
-      // ignore ret, just report warning because the other super block may be
-      // valid
-      ret = OB_SUCCESS;
-    } else {
-      if (!super_block_.is_valid()) {
-        super_block_ = tmp_super_block;
-      } else {
-        if (super_block_.body_.modify_timestamp_ <
-            tmp_super_block.body_.modify_timestamp_) {
-          super_block_ = tmp_super_block;
-        }
-      }
-    }
-  }
-
-  return ret;
-}
-
-/**
  * ------------------------------------ObMacroBlockRewriteSeqGenerator-------------------------------------
  */
 ObMacroBlockRewriteSeqGenerator::ObMacroBlockRewriteSeqGenerator()
@@ -153,7 +119,7 @@ int ObMacroBlockRewriteSeqGenerator::generate_next_sequence(uint64_t &blk_seq) {
  * -----------------------------------------ObBlockManager------------------------------------------
  */
 ObBlockManager::ObBlockManager()
-    : bucket_lock_(), block_map_(), super_block_fd_(), default_block_size_(0),
+    : bucket_lock_(), block_map_(), default_block_size_(0),
       marker_status_(), marker_lock_(), is_mark_sweep_enabled_(false),
       sweep_lock_(), mark_block_task_(*this), inspect_bad_block_task_(*this),
       timer_(), bad_block_lock_(), io_device_(NULL), blk_seq_generator_(),
@@ -165,9 +131,7 @@ int ObBlockManager::init(ObIODevice *io_device, const int64_t block_size) {
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(is_inited_)) {
     ret = OB_INIT_TWICE;
-  } else if (OB_ISNULL(io_device) ||
-             OB_UNLIKELY(block_size <
-                         ObServerSuperBlockHeader::OB_MAX_SUPER_BLOCK_SIZE)) {
+  } else if (OB_ISNULL(io_device) || OB_UNLIKELY(block_size < DIO_READ_ALIGN_SIZE)) {
     ret = OB_INVALID_ARGUMENT;
   } else if (OB_FAIL(timer_.set_run_wrapper_with_ret(share::server_runtime()))) {
   } else if (OB_FAIL(timer_.init("BlkMgr"))) {
@@ -177,8 +141,6 @@ int ObBlockManager::init(ObIODevice *io_device, const int64_t block_size) {
                  ObMemAttr("BlockMap")))) {
   } else {
     io_device_ = io_device;
-    super_block_fd_.first_id_ = 0;  // super block default fd
-    super_block_fd_.second_id_ = 0; // super block default fd
     default_block_size_ = block_size;
     ATOMIC_STORE(&alloc_num_, 0);
     is_inited_ = true;
@@ -190,9 +152,8 @@ int ObBlockManager::init(ObIODevice *io_device, const int64_t block_size) {
   return ret;
 }
 
-int ObBlockManager::start(const int64_t reserved_size, bool &need_format) {
+int ObBlockManager::start(const int64_t reserved_size) {
   int ret = OB_SUCCESS;
-  need_format = false;
   ObIODOpts opts;
   ObIODOpt opt;
   opts.opt_cnt_ = 1;
@@ -225,9 +186,8 @@ int ObBlockManager::start(const int64_t reserved_size, bool &need_format) {
                      "you may find solutions in previous error logs or seek "
                      "help from official technicians.");
   } else {
-    need_format = opt.value_.value_bool;
     is_started_ = true;
-    LOG_INFO("start block manager", K(need_format));
+    LOG_INFO("start block manager");
     LOG_DBA_INFO_V2(OB_SERVER_BLOCK_MANAGER_START_SUCCESS,
                     DBA_STEP_INC_INFO(server_start),
                     "block manager start success.");
@@ -253,7 +213,6 @@ void ObBlockManager::destroy() {
     bad_block_infos_.destroy();
   }
   io_device_ = NULL;
-  super_block_fd_.reset();
   default_block_size_ = 0;
   is_mark_sweep_enabled_ = false;
   marker_status_.reset();
@@ -372,52 +331,6 @@ int ObBlockManager::write_block(const ObMacroBlockWriteInfo &write_info,
   int ret = OB_SUCCESS;
   if (OB_FAIL(async_write_block(write_info, macro_handle))) {
   } else if (OB_FAIL(macro_handle.wait())) {
-  }
-  return ret;
-}
-
-int ObBlockManager::read_super_block(ObServerSuperBlock &super_block,
-                                     ObSuperBlockBufferHolder &buf_holder) {
-  int ret = OB_SUCCESS;
-  int64_t read_size = 0;
-
-  if (IS_NOT_INIT) {
-    ret = OB_NOT_INIT;
-  } else {
-    HEAP_VAR(ObSuperBlockPreadChecker, checker) {
-      if (OB_FAIL(io_device_->pread(
-              super_block_fd_, SUPER_BLOCK_OFFSET, buf_holder.get_len(),
-              buf_holder.get_buffer(), read_size, &checker))) {
-      } else if (OB_UNLIKELY(buf_holder.get_len() != read_size)) {
-        ret = OB_IO_ERROR;
-      } else {
-        super_block = checker.get_super_block();
-        if (OB_UNLIKELY(!super_block.is_valid())) {
-          ret = OB_ERR_UNEXPECTED;
-        } else {
-          LOG_INFO("finish read_super_block", K(ret), K(super_block_fd_),
-                   K(super_block));
-        }
-      }
-    }
-  }
-  return ret;
-}
-
-int ObBlockManager::write_super_block(const ObServerSuperBlock &super_block,
-                                      ObSuperBlockBufferHolder &buf_holder) {
-  int ret = OB_SUCCESS;
-  int64_t write_size = 0;
-  if (!super_block.is_valid()) {
-    ret = OB_INVALID_ARGUMENT;
-  } else if (OB_FAIL(buf_holder.serialize_super_block(super_block))) {
-  } else if (OB_FAIL(io_device_->pwrite(super_block_fd_, SUPER_BLOCK_OFFSET,
-                                        buf_holder.get_len(),
-                                        buf_holder.get_buffer(), write_size))) {
-  } else if (OB_UNLIKELY(buf_holder.get_len() != write_size)) {
-    ret = OB_IO_ERROR;
-  } else {
-    LOG_INFO("succeed to write super block", K(ret), K(super_block));
   }
   return ret;
 }
@@ -582,8 +495,7 @@ int ObBlockManager::report_bad_block(const MacroBlockId &macro_block_id,
 
 int ObBlockManager::resize_file(const int64_t new_data_file_size,
                                 const int64_t new_data_file_disk_percentage,
-                                const int64_t reserved_size,
-                                ObServerSuperBlock &super_block) {
+                                const int64_t reserved_size) {
   int ret = OB_SUCCESS;
   if (IS_NOT_INIT) {
     ret = OB_NOT_INIT;
@@ -593,8 +505,6 @@ int ObBlockManager::resize_file(const int64_t new_data_file_size,
     LOG_INFO("mark and sweep is disabled, do not resize file at present");
   } else {
     SpinWLockGuard sweep_guard(sweep_lock_);
-    const int64_t old_macro_block_cnt =
-        get_total_block_size() / OB_STORAGE_OBJECT_MGR.get_macro_block_size();
     ObIODOpts io_d_opts;
     ObIODOpt opts[3];
     opts[0].set("datafile_size", new_data_file_size);
@@ -602,21 +512,7 @@ int ObBlockManager::resize_file(const int64_t new_data_file_size,
     opts[2].set("reserved_size", reserved_size);
     io_d_opts.opts_ = opts;
     io_d_opts.opt_cnt_ = 3;
-    if (OB_FAIL(io_device_->reconfig(io_d_opts))) {
-    } else {
-      const int64_t new_actual_file_size = get_total_block_size();
-      const int64_t new_macro_block_cnt =
-          new_actual_file_size / OB_STORAGE_OBJECT_MGR.get_macro_block_size();
-
-      if (old_macro_block_cnt < new_macro_block_cnt) {
-        super_block.body_.total_file_size_ = new_actual_file_size;
-        super_block.body_.total_macro_block_count_ = new_macro_block_cnt;
-        super_block.body_.modify_timestamp_ = ObTimeUtility::current_time();
-      }
-      // Keep the super-block header consistent with the changed body.
-      if (FAILEDx(super_block.construct_header())) {
-      }
-    }
+    ret = io_device_->reconfig(io_d_opts);
   }
   return ret;
 }

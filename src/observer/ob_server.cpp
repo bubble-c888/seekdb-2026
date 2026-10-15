@@ -87,7 +87,6 @@ int ObServer::get_lower_bound_freeze_info(const int64_t snapshot_version, share:
 #include "storage/ddl/ob_ddl_redo_log_writer.h"
 #include "observer/ob_server_utils.h"
 #include "common/xml/ob_libxml2_sax_handler.h"
-#include "common/ob_data_version_mgr.h"
 #include "observer/vector_index/ob_plugin_vector_index_utils.h"
 #include "observer/vector_index/ob_plugin_vector_index_service.h"
 #include "observer/composition/retrieval/ob_das_legacy_tr_merge_iter.h"
@@ -617,7 +616,7 @@ ObServer::ObServer()
     session_mgr_(),
     standby_host_(nullptr),
     standby_module_(nullptr),
-    ob_service_(gctx_, *this),
+    ob_service_(gctx_, *this, local_store_),
     debug_sync_broadcaster_(ob_service_),
     server_runtime_controller_(), vt_data_service_(local_management_service_, self_addr_),
     start_time_(ObTimeUtility::current_time()),
@@ -1774,9 +1773,6 @@ int ObServer::init_config(const ObServerOptions &opts)
   if (OB_FAIL(local_store_.init("./store/local"))) {
   } else if (OB_FAIL(config_mgr_.init(local_store_))) {
   } else if (OB_FAIL(config_mgr_.got_version())) {
-  } else if (OB_FAIL(DATA_VERSION_MGR.init())) {
-  } else if (OB_FAIL(DATA_VERSION_MGR.load_from_file())) {
-  } else if (OB_FAIL(DATA_VERSION_MGR.validate_or_init_current_version())) {
   }
 
   if (OB_SUCC(ret) && 0 == config::server_create_time()) {
@@ -2526,139 +2522,6 @@ int ObServer::init_tx_data_cache()
 {
   int ret = OB_SUCCESS;
   if (OB_FAIL(OB_TX_DATA_KV_CACHE.init("tx_data_kv_cache"))) {
-  }
-  return ret;
-}
-
-char* strtrim(char* str)
-{
-  char* ptr;
-
-  if (str == NULL) {
-    return NULL;
-  }
-
-  ptr = str + strlen(str) - 1;
-  while (isspace(*str)) {
-    str++;
-  }
-
-  while ((ptr > str) && isspace(*ptr)) {
-    *ptr-- = '\0';
-  }
-
-  return str;
-}
-
-static int64_t nic_rate_parse(const char *str, bool &valid)
-{
-  char *p_unit = nullptr;
-  int64_t value = 0;
-
-  if (OB_ISNULL(str) || '\0' == str[0]) {
-    valid = false;
-  } else {
-    valid = true;
-    value = strtoll(str, &p_unit, 0);
-    p_unit = strtrim(p_unit);
-
-    if (OB_ISNULL(p_unit)) {
-      valid = false;
-    } else if (value <= 0) {
-      valid = false;
-    } else if (0 == STRCASECMP("bit", p_unit)
-               || 0 == STRCASECMP("b", p_unit)) {
-      // do nothing
-    } else if (0 == STRCASECMP("kbit", p_unit)
-               || 0 == STRCASECMP("kb", p_unit)
-               || 0 == STRCASECMP("k", p_unit)) {
-      value <<= 10;
-    } else if ('\0' == *p_unit
-               || 0 == STRCASECMP("mbit", p_unit)
-               || 0 == STRCASECMP("mb", p_unit)
-               || 0 == STRCASECMP("m", p_unit)) {
-      // default is meta bit
-      value <<= 20;
-    } else if (0 == STRCASECMP("gbit", p_unit)
-               || 0 == STRCASECMP("gb", p_unit)
-               || 0 == STRCASECMP("g", p_unit)) {
-      value <<= 30;
-    } else {
-      valid = false;
-      LOG_ERROR_RET(OB_ERR_UNEXPECTED, "parse nic rate error", K(str), K(p_unit));
-    }
-  }
-  return value;
-}
-
-int ObServer::get_network_speed_from_config_file(int64_t &network_speed)
-{
-  int ret = OB_SUCCESS;
-  const char *nic_rate_path = "etc/nic.rate.config";
-  const int64_t MAX_NIC_CONFIG_FILE_SIZE = 1 << 10; // 1KB
-  FILE *fp = nullptr;
-  char *buf = nullptr;
-  static int nic_rate_file_exist = 1;
-
-  if (OB_ISNULL(buf = static_cast<char *>(ob_malloc(MAX_NIC_CONFIG_FILE_SIZE + 1,
-                                                           ObModIds::OB_BUFFER)))) {
-    ret = OB_ALLOCATE_MEMORY_FAILED;
-    LOG_ERROR("alloc buffer failed", LITERAL_K(MAX_NIC_CONFIG_FILE_SIZE), KR(ret));
-  } else if (OB_ISNULL(fp = fopen(nic_rate_path, "r"))) {
-    if (ENOENT == errno) {
-      ret = OB_FILE_NOT_EXIST;
-      if (nic_rate_file_exist) {
-        nic_rate_file_exist = 0;
-      }
-    } else {
-      ret = OB_IO_ERROR;
-      if (EAGAIN == errno) {
-      } else {
-        LOG_ERROR("Can't open NIC Config file", K(nic_rate_path), K(errno), KR(ret));
-      }
-    }
-  } else {
-    if (!nic_rate_file_exist) {
-      LOG_INFO("Reading NIC Config file", K(nic_rate_path));
-      nic_rate_file_exist = 1;
-    }
-    memset(buf, 0, MAX_NIC_CONFIG_FILE_SIZE + 1);
-    // ignore return value of fread, because ferror can get fread state
-    IGNORE_RETURN fread(buf, 1, MAX_NIC_CONFIG_FILE_SIZE, fp);
-    char *prate = nullptr;
-
-    if (OB_UNLIKELY(0 != ferror(fp))) {
-      ret = OB_IO_ERROR;
-      LOG_ERROR("Read NIC Config file error", K(nic_rate_path), KR(ret));
-    } else if (OB_UNLIKELY(0 == feof(fp))) {
-      ret = OB_BUF_NOT_ENOUGH;
-      LOG_ERROR("NIC Config file is too long", K(nic_rate_path), KR(ret));
-    } else {
-      prate = strchr(buf, '=');
-      if (nullptr != prate) {
-        prate++;
-        bool valid = false;
-        int64_t nic_rate = nic_rate_parse(prate, valid);
-        if (valid) {
-          network_speed = nic_rate / 8;
-        } else {
-          ret = OB_INVALID_ARGUMENT;
-          LOG_ERROR("invalid NIC Rate Config", KR(ret));
-        }
-      } else {
-        ret = OB_INVALID_ARGUMENT;
-        LOG_ERROR("invalid NIC Config file", KR(ret));
-      }
-    } // else
-
-    if (OB_UNLIKELY(0 != fclose(fp))) {
-      ret = OB_IO_ERROR;
-      LOG_ERROR("Close NIC Config file failed", KR(ret));
-    }
-  } // else
-  if (OB_LIKELY(nullptr != buf)) {
-    ob_free(buf);
-    buf = nullptr;
   }
   return ret;
 }

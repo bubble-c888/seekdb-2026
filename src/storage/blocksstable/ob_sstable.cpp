@@ -1463,7 +1463,7 @@ int ObSSTable::persist_linked_block_if_need(
 #endif
   if (OB_FAIL(!is_loaded())) {
     ret = OB_ERR_UNEXPECTED;
-  } else if (ObServerSuperBlock::EMPTY_LIST_ENTRY_BLOCK != meta_->macro_info_.entry_id_) {
+  } else if (!meta_->macro_info_.entry_id_.is_empty_list_entry()) {
     // linked block had been persisted
   } else if (is_small_sstable()) {
     // A small SSTable has exactly one nested data range; persisting its macro IDs

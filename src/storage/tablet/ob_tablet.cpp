@@ -1904,7 +1904,7 @@ int ObTablet::load_macro_info(
   in_memory = false;
   if (macro_info_addr_.is_none_object()) {
     // return a macro_info with cnt_ = 0;
-    // default construct param: EMPTY_LIST_ENTRY_BLOCK
+    // default construct param: MacroBlockId::EMPTY_LIST_ENTRY
     tablet_macro_info = static_cast<ObTabletMacroInfo*>(allocator.alloc(sizeof(ObTabletMacroInfo)));
     new (tablet_macro_info)ObTabletMacroInfo();
   } else if (macro_info_addr_.is_memory_object()) { // MEM

@@ -371,7 +371,7 @@ int ObLinkedMacroBlockItemWriter::get_entry_block(MacroBlockId &entry_block) con
   } else {
     if (0 == written_items_cnt_) {
       LOG_INFO("no block items has been write");
-      entry_block = ObServerSuperBlock::EMPTY_LIST_ENTRY_BLOCK;
+      entry_block = MacroBlockId::EMPTY_LIST_ENTRY;
     } else {
       entry_block = block_writer_.get_entry_block();
     }

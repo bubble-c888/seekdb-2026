@@ -140,7 +140,6 @@ STORAGE_UNITY_GROUPS = [
             "src/storage/blocksstable/ob_logic_macro_id.cpp",
             "src/storage/blocksstable/ob_sstable_printer.cpp",
             "src/storage/blocksstable/ob_storage_cache_suite.cpp",
-            "src/storage/blocksstable/ob_super_block_buffer_holder.cpp",
             "src/storage/blocksstable/ob_storage_datum.cpp",
             "src/storage/blocksstable/ob_datum_row.cpp",
             "src/storage/blocksstable/ob_datum_rowkey.cpp",
@@ -295,7 +294,6 @@ STORAGE_UNITY_GROUPS = [
         srcs = [
             "src/storage/ob_storage_table_guard.cpp",
             "src/storage/ob_storage_util.cpp",
-            "src/storage/ob_super_block_struct.cpp",
             "src/storage/ob_sync_tablet_seq_clog.cpp",
             "src/storage/ob_table_store_stat_mgr.cpp",
             "src/storage/ob_value_row_iterator.cpp",

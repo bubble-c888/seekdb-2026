@@ -554,7 +554,6 @@ OBLIB_HEADER_TARGETS = {
         "hdrs": [
         "common/ob_accuracy.h",
         "common/ob_common_types.h",
-        "common/ob_data_version_mgr.h",
         "common/ob_store_format.h",
         "common/ob_timeout_ctx.h",
         "common/ob_version_def.h",
@@ -1419,7 +1418,6 @@ OBLIB_HEADER_TARGET_FOR_HEADER = {
     "common/ob_accuracy.h": ":oblib_db_values_runtime",
     "common/ob_action_flag.h": ":oblib_db_values_primitives",
     "common/ob_common_types.h": ":oblib_db_values_runtime",
-    "common/ob_data_version_mgr.h": ":oblib_db_values_runtime",
     "common/ob_field.h": ":oblib_db_values_model",
     "common/ob_hex_utils_base.h": ":oblib_db_values_support",
     "common/ob_range.h": ":oblib_common",

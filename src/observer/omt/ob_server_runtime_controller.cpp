@@ -949,7 +949,6 @@ void ObServerRuntimeController::runTimerTask()
   if (REACH_TIME_INTERVAL(10000000L)) {  // every 10s
     ObDIActionGuard ag("dump runtime info");
     if (!OB_ISNULL(runtime_)) {
-      ObTaskController::get().allow_next_syslog();
       LOG_INFO("dump runtime info", "runtime", *runtime_);
     }
   }

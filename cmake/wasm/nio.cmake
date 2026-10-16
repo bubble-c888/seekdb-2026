@@ -16,8 +16,8 @@ set_target_properties(nio PROPERTIES
   INTERFACE_INCLUDE_DIRECTORIES "${SEEKDB_ROOT}/rust/sql-nio/include")
 list(APPEND engine_libraries nio)
 
-# rust/build.py also exports the config and local crates; config uses local.
-foreach(crate config local)
+# rust/build.py exports all C++ interfaces from the shared Rust archive.
+foreach(crate config local logger)
   set(archive "${SEEKDB_WASM_RUST_DIR}/exports/lib${crate}.a")
   if(NOT EXISTS "${archive}")
     message(FATAL_ERROR "Build the Rust crates with tools/wasm/build-rust-nio.sh ${SEEKDB_WASM_RUST_DIR}")

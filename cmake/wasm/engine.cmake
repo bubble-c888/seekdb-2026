@@ -115,9 +115,6 @@ add_engine_module(oblib_lib SEEKDB_OBLIB_LIB_UNITY SEEKDB_OBLIB_BITMAP_UNITY
   SEEKDB_OBLIB_SIMD_UNITY)
 # The codec implementation maps its SSE4.1 intrinsics through the pinned SDK.
 target_compile_options(oblib_lib PRIVATE -msimd128 -msse4.1)
-# Preserve the native non-Unity action for the log compressor.
-set_source_files_properties("${SEEKDB_ROOT}/src/oblib/lib/oblog/ob_log_compressor.cpp"
-  PROPERTIES SKIP_UNITY_BUILD_INCLUSION ON)
 add_engine_module(compression SEEKDB_OBLIB_COMPRESS_STANDALONE SEEKDB_OBLIB_ZSTD_STANDALONE)
 add_engine_module(restore SEEKDB_OBLIB_RESTORE_STANDALONE)
 add_engine_module(rpc SEEKDB_OBLIB_RPC_UNITY)

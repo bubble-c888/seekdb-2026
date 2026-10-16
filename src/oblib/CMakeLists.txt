@@ -336,6 +336,9 @@ else()
     ${ARCH_LDFLAGS}
   )
 endif()
+# Trace/log headers are used by the early allocator objects as well. Propagate
+# the generated cxx header and its build dependency through their shared base.
+target_link_libraries(oblib_base_without_pass INTERFACE logger)
 target_link_libraries(oblib_base INTERFACE oblib_base_without_pass oblib_pass)
 
 function(oblib_add_library target)

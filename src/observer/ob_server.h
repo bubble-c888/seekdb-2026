@@ -250,7 +250,7 @@ public:
   static ObServer &get_instance();
 
 public:
-  int init(const ObServerOptions &opts, const ObPLogWriterCfg &log_cfg);
+  int init(const ObServerOptions &opts);
   void destroy();
 
   // Start OceanBase server, this function is blocked after invoking

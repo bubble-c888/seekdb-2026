@@ -55,13 +55,6 @@ public:
   }
   virtual void run3() = 0;
 
-  //Set RS thread properties
-  virtual int before_blocking_run()
-  { common::ObThreadFlags::set_rs_flag(); return common::OB_SUCCESS; }
-
-  virtual int after_blocking_run()
-  { common::ObThreadFlags::cancel_rs_flag(); return common::OB_SUCCESS; }
-  
   virtual bool need_monitor_check() const;
   virtual int64_t get_schedule_interval() const
   { return -1; }

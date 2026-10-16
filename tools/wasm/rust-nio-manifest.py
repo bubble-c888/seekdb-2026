@@ -12,10 +12,10 @@ parser.add_argument("--record", action="store_true")
 args = parser.parse_args()
 repo = Path(__file__).resolve().parents[2]
 build = args.build_dir.resolve()
-archives = {name: build / "exports" / f"lib{name}.a" for name in ("sql_nio", "config", "local")}
+archives = {name: build / "exports" / f"lib{name}.a" for name in ("sql_nio", "config", "local", "logger")}
 manifest = build / "nio-build-manifest.json"
 paths = [
-    *sorted(path for crate in ("sql-nio", "config", "kv", "local")
+    *sorted(path for crate in ("sql-nio", "config", "kv", "local", "logger", "seekdb-rust")
             for pattern in ("src/**/*.rs", "include/*.h", "*.toml", "*.rs", "*.yaml")
             for path in (repo / "rust" / crate).glob(pattern)),
     *(repo / name for name in (

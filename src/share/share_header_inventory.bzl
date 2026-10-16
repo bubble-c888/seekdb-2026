@@ -158,7 +158,6 @@ SHARE_PUBLIC_HEADER_ROOTS = [
     "ob_tablet_autoincrement_param.h",
     "ob_tablet_local_checksum_operator.h",
     "ob_tablet_meta_table_compaction_operator.h",
-    "ob_task_define.h",
     "ob_telemetry.h",
     "ob_thread_pool.h",
     "ob_throttling_utils.h",

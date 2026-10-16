@@ -148,7 +148,7 @@ def _header_category(header):
         return "db_values"
 
     family = parts[1] if len(parts) > 2 else "core"
-    if family == "compress" or header == "lib/oblog/ob_log_compressor.h":
+    if family == "compress":
         return "compression"
     if family == "restore":
         return "restore"

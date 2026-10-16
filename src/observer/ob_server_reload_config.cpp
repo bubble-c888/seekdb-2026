@@ -105,12 +105,6 @@ int ObServerReloadConfig::operator()()
   }
   lib::AChunkMgr::instance().set_max_chunk_cache_size(cache_size, use_large_chunk_cache);
 
-  // syslog bandwidth limitation
-  share::ObTaskController::get().set_log_rate_limit(
-      config::syslog_io_bandwidth_limit());
-  share::ObTaskController::get().set_diag_per_error_limit(
-      config::diag_syslog_per_error_limit());
-
   lib::g_runtime_enabled = true;
 
     common::ObKVGlobalCache::get_instance().reload_config(

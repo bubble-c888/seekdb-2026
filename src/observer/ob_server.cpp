@@ -45,7 +45,6 @@ int ObServer::get_lower_bound_freeze_info(const int64_t snapshot_version, share:
 #include "rootserver/ob_local_ddl_serial_call.h"
 #include "rootserver/ddl_task/ob_ddl_task.h"
 #include "lib/alloc/memory_dump.h"
-#include "lib/oblog/ob_log_compressor.h"
 #include "lib/ob_running_mode.h"
 #include "lib/task/ob_timer_monitor.h"
 #include "lib/task/ob_timer_service.h" // ObTimerService
@@ -643,7 +642,7 @@ ObServer::~ObServer()
   destroy();
 }
 
-int ObServer::init(const ObServerOptions &opts, const ObPLogWriterCfg &log_cfg)
+int ObServer::init(const ObServerOptions &opts)
 {
   in_process_ = opts.in_process_;
 #ifdef __EMSCRIPTEN__
@@ -662,7 +661,7 @@ int ObServer::init(const ObServerOptions &opts, const ObPLogWriterCfg &log_cfg)
   // Config loading can fail before the rest of the server is initialized.
   // Start the log writer first so the offending config key is
   // recorded in observer.log.
-  if (OB_FAIL(OB_LOGGER.init(log_cfg))) {
+  if (OB_FAIL(OB_LOGGER.init())) {
     LOG_ERROR("async log init error", KR(ret));
   }
   if (OB_SUCC(ret) && OB_FAIL(init_config(opts))) {
@@ -722,10 +721,6 @@ int ObServer::init(const ObServerOptions &opts, const ObPLogWriterCfg &log_cfg)
   }
 
     if (OB_FAIL(ret)) {
-    } else if (OB_FAIL(OB_LOG_COMPRESSOR.init())) {
-      LOG_ERROR("log compressor init error.", KR(ret));
-    } else if (OB_FAIL(OB_LOGGER.set_log_compressor(&OB_LOG_COMPRESSOR))) {
-      LOG_ERROR("set log compressor error.", KR(ret));
     } else if (OB_FAIL(init_tz_info_mgr())) {
       LOG_ERROR("init tz_info_mgr failed", KR(ret));
     } else if (OB_FAIL(ObSqlTaskFactory::get_instance().init())) {
@@ -938,12 +933,7 @@ void ObServer::destroy()
     OB_LOGGER.destroy();
     FLOG_INFO("OB_LOGGER destroyed");
 
-    FLOG_INFO("begin to destroy OB_LOG_COMPRESSOR");
-    OB_LOG_COMPRESSOR.destroy();
-    FLOG_INFO("OB_LOG_COMPRESSOR destroyed");
-
     FLOG_INFO("begin to destroy task controller");
-    ObTaskController::get().destroy();
     FLOG_INFO("task controller destroyed");
 
 
@@ -1550,12 +1540,7 @@ int ObServer::stop()
   FLOG_INFO("stop OB_LOGGER success");
 #endif
 
-  FLOG_INFO("begin to stop OB_LOG_COMPRESSOR");
-  OB_LOG_COMPRESSOR.stop();
-  FLOG_INFO("stop OB_LOG_COMPRESSOR success");
-
   FLOG_INFO("begin to stop task controller");
-  ObTaskController::get().stop();
   FLOG_INFO("stop task controller success");
 
   FLOG_INFO("begin to stop config manager");
@@ -1966,7 +1951,6 @@ int ObServer::set_running_mode()
   const int64_t cnt = config::cpu_count();
   const int64_t cpu_cnt = cnt > 0 ? cnt : common::get_cpu_num();
   if (memory_budget < lib::ObRunningModeConfig::MINI_MEM_UPPER) {
-    ObTaskController::get().allow_next_syslog();
     LOG_INFO("observer start with mini_mode", K(memory_budget));
     lib::update_mini_mode(memory_budget, cpu_cnt);
   } else {
@@ -1988,33 +1972,14 @@ int ObServer::init_pre_setting()
   if (OB_SUCC(ret)) {
     const int max_log_cnt = static_cast<int32_t>(config::max_syslog_file_count());
     const bool enable_async_syslog = config::enable_async_syslog();
-    const int64_t max_disk_size = config::syslog_disk_size();
-    const int64_t min_uncompressed_count = config::syslog_file_uncompressed_count();
-    rust::String compress_func = config::syslog_compress_func();
-    const char *compress_func_ptr = compress_func.c_str();
     OB_LOGGER.set_max_file_index(max_log_cnt);
     OB_LOGGER.set_record_old_log_file();
     OB_LOGGER.set_enable_async_log(enable_async_syslog);
-    OB_LOG_COMPRESSOR.set_max_disk_size(max_disk_size);
-    LOG_INFO("Whether compress syslog file", K(compress_func_ptr));
-    OB_LOG_COMPRESSOR.set_compress_func(compress_func_ptr);
-    OB_LOG_COMPRESSOR.set_min_uncompressed_count(min_uncompressed_count);
-    LOG_INFO("init log config", K(enable_async_syslog),
-             K(max_disk_size), K(compress_func_ptr), K(min_uncompressed_count));
+    LOG_INFO("init log config", K(enable_async_syslog), K(max_log_cnt));
     if (0 == max_log_cnt) {
       LOG_INFO("won't recycle log file");
     } else {
       LOG_INFO("recycle log file", "count", max_log_cnt);
-    }
-  }
-
-  // task controller(log rate limiter)
-  if (OB_SUCC(ret)) {
-    if (OB_FAIL(ObTaskController::get().init())) {
-    } else {
-      ObTaskController::get().set_log_rate_limit(config::syslog_io_bandwidth_limit());
-      ObTaskController::get().set_diag_per_error_limit(config::diag_syslog_per_error_limit());
-      ObTaskController::get().switch_task(share::ObTaskType::GENERIC);
     }
   }
 

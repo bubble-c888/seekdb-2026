@@ -498,7 +498,6 @@ int ObMultiVersionSchemaService::get_schema(const ObSchemaMgr *mgr,
           precise_version = table_schema->get_schema_version();
           // add debug info
           if (ObSysTableChecker::is_sys_table_has_index(table_schema->get_table_id())) {
-            ObTaskController::get().allow_next_syslog();
             LOG_INFO("fetch sys table schema with index", KR(ret),
                      K(schema_status), K(schema_id),
                      K(schema_version), K(precise_version),
@@ -972,7 +971,6 @@ int ObMultiVersionSchemaService::retry_get_schema_guard(const int64_t schema_ver
       } else if (schema_version > save_schema_version) {
         // If the specified version is greater than orig_schema_version, the table can be determined to be deleted
         ret = OB_TABLE_IS_DELETED;
-        ObTaskController::get().allow_next_syslog();
         LOG_INFO("table is deleted",K(ret), K(table_id), K(schema_version), K(save_schema_version));
       } else {}
     }

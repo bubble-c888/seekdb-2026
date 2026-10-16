@@ -154,7 +154,6 @@ SHARE_UNITY_GROUPS = [
         srcs = [
             "src/share/ob_tablet_checksum_operator.cpp",
             "src/share/ob_tablet_meta_table_compaction_operator.cpp",
-            "src/share/ob_task_define.cpp",
             "src/share/ob_telemetry.cpp",
             "src/share/ob_time_wheel.cpp",
             "src/share/ob_time_utility2.cpp",

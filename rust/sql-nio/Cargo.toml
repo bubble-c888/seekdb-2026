@@ -14,9 +14,9 @@ too_many_arguments = "allow"
 
 [lib]
 name = "sql_nio"
-# staticlib -> libsql_nio.a for linking into C++ (the future ObSqlNio shell);
-# rlib      -> Rust consumers.
-crate-type = ["staticlib", "rlib"]
+# rlib for tests and Rust consumers. seekdb-rust assembles the production
+# static archive so logging and networking share one runtime and allocator.
+crate-type = ["rlib"]
 test = false
 
 [features]

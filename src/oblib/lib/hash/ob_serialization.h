@@ -61,6 +61,7 @@
 #endif
 #endif
 #include "lib/hash/ob_hashutils.h"
+#include "lib/utility/ob_platform_utils.h"
 
 namespace oceanbase
 {

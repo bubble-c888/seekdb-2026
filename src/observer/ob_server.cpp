@@ -1998,7 +1998,7 @@ int ObServer::init_pre_setting()
     LOG_INFO("set stack_size", K(stack_size));
     global_thread_stack_size = stack_size - THREAD_STACK_RESERVED_SIZE - ACHUNK_PRESERVE_SIZE;
 #ifdef __APPLE__
-    const int ps = getpagesize();
+    const long ps = sysconf(_SC_PAGESIZE);
     global_thread_stack_size = (global_thread_stack_size + ps - 1) & ~(ps - 1);
 #endif
   }

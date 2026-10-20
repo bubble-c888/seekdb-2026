@@ -387,9 +387,10 @@ Before building, please install the required toolchain and dependencies for your
 # Clone the repository
 git clone https://github.com/oceanbase/seekdb.git
 cd seekdb
-./build.sh release --init --make
+./build.py init
+./build.py build seekdb
 mkdir -p ~/seekdb/bin
-cp build_release/src/observer/seekdb ~/seekdb/bin
+cp build/bin/src/observer/seekdb ~/seekdb/bin
 cd ~/seekdb
 ./bin/seekdb
 ```

@@ -7,7 +7,22 @@ def _windows_sdk(repository_ctx):
         for child in repository_ctx.path(sdk + "/" + directory).readdir():
             headers[child.basename] = child
     for name, path in headers.items():
-        repository_ctx.symlink(path, "include/" + name)
+        if name != "dirent.h":
+            repository_ctx.symlink(path, "include/" + name)
+    # Patch a repository-owned copy, never mutate the shared installed SDK.
+    python = repository_ctx.which("python")
+    if not python or "dirent.h" not in headers:
+        fail("Windows SDK requires Python and its pinned dirent.h")
+    repository_ctx.read(repository_ctx.attr.windows_dirent_patch)
+    repository_ctx.read(headers["dirent.h"])
+    result = repository_ctx.execute([
+        python,
+        repository_ctx.path(repository_ctx.attr.windows_dirent_patch),
+        headers["dirent.h"],
+        repository_ctx.path("include/dirent.h"),
+    ], quiet = True)
+    if result.return_code:
+        fail("Cannot prepare Windows dirent header: " + result.stderr)
     for source, destination in {
         "vcpkg/x64-windows/lib": "lib",
         "vcpkg/x64-windows/bin": "bin",
@@ -88,6 +103,10 @@ sdk_targets()
 
 third_party_headers_repository = repository_rule(
     attrs = {
+        "windows_dirent_patch": attr.label(
+            default = Label("//bazel/third_party:patch_windows_dirent.py"),
+            allow_single_file = True,
+        ),
         "platform": attr.string(
             default = "native",
             values = [

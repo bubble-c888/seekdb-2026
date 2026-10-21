@@ -231,7 +231,7 @@ jobs:
     if: ${{ always() && needs.seekdb-mysqltest.result != 'skipped' }}
     name: collect
     needs: seekdb-mysqltest
-    runs-on: arc-runner-k8s-ci-org
+    runs-on: arc-runner-k8s-ci-org-4c8g
     container:
       image: harbor.oceanbase-dev.com/obrde-test/ob-actions-runner-worker:0.0.2
     steps:

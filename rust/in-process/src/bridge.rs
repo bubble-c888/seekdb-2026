@@ -12,7 +12,13 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#pragma once
+#[cxx::bridge(namespace = "oceanbase::in_process")]
+mod ffi {
+    unsafe extern "C++" {
+        include!("in_process_server.h");
 
-#define SEEKDB_IOS_BUILD_ID "@GIT_REVISION@"
-#define SEEKDB_IOS_HOOK_MODE "disabled"
+        fn run_server(directory: &str, parameters: &[String], report_running: fn()) -> i32;
+    }
+}
+
+pub(crate) use ffi::run_server;

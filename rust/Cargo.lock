@@ -581,6 +581,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "in-process"
+version = "0.1.0"
+dependencies = [
+ "cbindgen",
+ "cxx",
+ "cxx-build",
+ "libc",
+]
+
+[[package]]
 name = "indexmap"
 version = "2.14.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -969,6 +979,7 @@ name = "seekdb-rust"
 version = "0.1.0"
 dependencies = [
  "config",
+ "in-process",
  "local",
  "logger",
  "sql-nio",

@@ -46,9 +46,7 @@ def verify(binary, exports, revision, platform):
     if actual != expected:
         raise ValueError("Unexpected ABI exports: " + repr(actual ^ expected))
     markers = output("strings", str(binary))
-    if "SEEKDB_IOS_ARTIFACT_HOOK_MODE=disabled" not in markers or "SEEKDB_IOS_ARTIFACT_HOOK_MODE=enabled" in markers:
-        raise ValueError("Missing or conflicting disabled test hook marker")
-    if "SEEKDB_IOS_ARTIFACT_BUILD_ID=" + revision not in markers:
+    if "SEEKDB_IN_PROCESS_ARTIFACT_BUILD_ID=" + revision not in markers:
         raise ValueError("Framework binary does not match its stamped source revision")
     return minimum_os, dependencies, sorted(actual)
 
@@ -79,7 +77,7 @@ def main():
     parser.add_argument("--source-metadata", type=Path, nargs="+", required=True)
     parser.add_argument("--licenses", type=Path, nargs="+", required=True)
     args = parser.parse_args()
-    revision = re.search(r'#define SEEKDB_IOS_BUILD_ID "([^"]+)"', args.config.read_text()).group(1)
+    revision = re.search(r'#define SEEKDB_IN_PROCESS_BUILD_ID "([^"]+)"', args.config.read_text()).group(1)
     minimum_os, dependencies, exports = verify(args.binary, args.exports, revision, args.platform)
     destination = args.output
     (destination / "Headers").mkdir(parents=True, exist_ok=True)
@@ -90,14 +88,13 @@ def main():
         "CFBundleVersion": "1", "CFBundleShortVersionString": "1.0",
         "CFBundleSupportedPlatforms": [{"IOS": "iPhoneOS", "IOSSIMULATOR": "iPhoneSimulator"}[args.platform]],
         "MinimumOSVersion": minimum_os, "SeekDBSourceRevision": revision,
-        "SeekDBTestHooks": "disabled",
     }
     (destination / "Info.plist").write_bytes(plistlib.dumps(info))
     archives = sorted({Path(line) for line in args.link_inputs.read_text().splitlines() if line.endswith(".a")})
     records = [json.loads(path.read_text()) for path in args.source_metadata]
     manifest = {
         "source_revision": revision, "platform": args.platform,
-        "architecture": "arm64", "deployment_target": minimum_os, "test_hooks": "disabled",
+        "architecture": "arm64", "deployment_target": minimum_os,
         "binary_sha256": digest(args.binary), "public_header_sha256": digest(args.header),
         "dynamic_dependencies": dependencies, "exported_symbols": exports,
         "static_dependencies": [{"path": str(path), "sha256": digest(path)} for path in archives],

@@ -16,3 +16,4 @@ sql-nio = { path = "../sql-nio", default-features = false }
 logger = { path = "../logger" }
 config = { path = "../config" }
 local = { path = "../local" }
+in-process = { path = "../in-process" }

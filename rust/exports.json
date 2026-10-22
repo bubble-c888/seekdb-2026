@@ -35,5 +35,11 @@
     },
     "deps": [],
     "library": "seekdb_rust"
+  },
+  "in_process": {
+    "crate": "in-process",
+    "headers": {},
+    "deps": [],
+    "library": "seekdb_rust"
   }
 }

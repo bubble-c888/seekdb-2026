@@ -8,12 +8,12 @@ def ios_framework():
     """Declare device/simulator framework targets inside the Observer package."""
     version_source(
         name = "_ios_build_config",
-        template = "ios/driver/build_config.h.in",
+        template = "ios/build_config.h.in",
         out = "ios-build-config.h",
     )
     cc_library(
         name = "_ios_entry",
-        srcs = ["ios/seekdb_ios.cpp", "ios/driver/seekdb_lifecycle.cpp"],
+        srcs = ["in_process/in_process_server.cpp"],
         copts = CXX_COPTS + ["-include", "$(location :_ios_build_config)"],
         additional_compiler_inputs = [":_ios_build_config"],
         deps = [
@@ -24,6 +24,8 @@ def ios_framework():
             "//src/oblib:oblib_rpc",
             "//deps/external:jemalloc_headers",
             "//bazel/third_party:curl_headers",
+            "//rust:in_process_headers",
+            "//rust:logger_headers",
         ],
         target_compatible_with = ["@platforms//os:ios"],
         tags = ["manual"],
@@ -38,12 +40,13 @@ def ios_framework():
             "//rust:config_archive",
             "//rust:local_archive",
             "//rust:logger_archive",
+            "//rust:in_process_archive",
             "//deps/external:jemalloc_archive",
         ],
-        extra_inputs = ["ios/driver/exports.txt"],
+        extra_inputs = ["ios/exports.txt"],
         linkopts = [
             "-Wl,-install_name,@rpath/SeekDB.framework/SeekDB",
-            "-Wl,-exported_symbols_list,$(location ios/driver/exports.txt)",
+            "-Wl,-exported_symbols_list,$(location ios/exports.txt)",
             "-Wl,-framework,Security",
             "-Wl,-framework,CoreFoundation",
             "-Wl,-framework,SystemConfiguration",
@@ -76,8 +79,8 @@ def ios_framework():
             ":_ios_build_config",
             ":_ios_framework_link_inputs",
             ":_ios_framework_link_manifest",
-            "ios/driver/seekdb.h",
-            "ios/driver/exports.txt",
+            "//rust:in-process/include/seekdb.h",
+            "ios/exports.txt",
             "//:LICENSE",
             "//rust:Cargo.lock",
             "@cargo_native_sources//:vendor.tar",
@@ -96,7 +99,7 @@ def ios_framework():
         ],
         cmd = 'python3 "$(location //package/ios:package_framework.py)"' +
               ' --binary "$(location :_ios_framework_link)" --config "$(location :_ios_build_config)"' +
-              ' --header "$(location ios/driver/seekdb.h)" --exports "$(location ios/driver/exports.txt)"' +
+              ' --header "$(location //rust:in-process/include/seekdb.h)" --exports "$(location ios/exports.txt)"' +
               ' --link-inputs "$(location :_ios_framework_link_manifest)"' +
               ' --rust-lock "$(location //rust:Cargo.lock)"' +
               ' --cargo-sources "$(location @cargo_native_sources//:vendor.tar)"' +

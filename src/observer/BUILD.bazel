@@ -1,4 +1,4 @@
-load("//bazel:compile_config.bzl", "sanity_linkopts")
+load("//bazel:compile_config.bzl", "MODULE_CXX_COPTS", "sanity_linkopts")
 load(":observer_link_deps.bzl", "observer_third_party_link_files")
 load("//bazel:ios_framework.bzl", "ios_framework")
 load(
@@ -503,8 +503,29 @@ alias(
     visibility = ["//visibility:public"],
 )
 
+cc_library(
+    name = "_unittest_in_process_entry",
+    testonly = True,
+    srcs = ["in_process/in_process_server.cpp"],
+    copts = MODULE_CXX_COPTS + ["-include", "$(location :_ios_build_config)"],
+    additional_compiler_inputs = [":_ios_build_config"],
+    deps = [
+        ":observer_internal_interface",
+        "//src/oblib:oblib_foundation",
+        "//src/oblib:oblib_base",
+        "//src/oblib:oblib_io_primitives",
+        "//src/oblib:oblib_rpc",
+        "//deps/external:jemalloc_headers",
+        "//bazel/third_party:curl_headers",
+        "//rust:in_process_headers",
+        "//rust:logger_headers",
+    ],
+    tags = ["manual"],
+)
+
 final_link(
     name = "_liboceanbase_link",
+    testonly = True,
     whole_group_deps = (
         _OBSERVER_RETRIEVAL_COMPOSITION_OBJECT_TARGETS +
         _CORE_LINK_DEPS +
@@ -517,7 +538,12 @@ final_link(
                 "//src/sql/parser:sql_server_parser",
             ],
         })
-    ),
+    ) + select({
+        # The shared test runtime retains the Rust in-process bridge, including
+        # its reference to run_server. Supply the real implementation on Linux.
+        "@platforms//os:linux": [":_unittest_in_process_entry"],
+        "//conditions:default": [],
+    }),
     ordered_link_files = _ORDERED_LINK_FILES,
     extra_inputs = _EXTRA_LINK_INPUTS,
     linkopts = _SYSTEM_LINKOPTS + _SHARED_LINKOPTS + sanity_linkopts(),

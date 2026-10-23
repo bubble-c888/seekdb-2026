@@ -583,3 +583,15 @@ cc_library(
     tags = ["manual"],
     visibility = ["//unittest/storage/memtable:__pkg__"],
 )
+
+cc_library(
+    name = "tx_replay_test_headers",
+    testonly = True,
+    hdrs = ["tx/ob_tx_replay_executor.h"],
+    deps = [
+        ":storage_runtime_interface",
+        "//src/logservice:logservice",
+    ] + _STORAGE_INTERFACE_NATIVE_DEPS,
+    tags = ["manual"],
+    visibility = ["//unittest/storage/tx:__pkg__"],
+)

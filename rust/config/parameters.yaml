@@ -1013,13 +1013,6 @@
   edit_level: DYNAMIC_EFFECTIVE
   description: "the time during which a RPC request is permitted to execute before it is terminated"
 
-- name: location_cache_refresh_sql_timeout
-  type: TIME
-  default: "1s"
-  range: "[1ms,)"
-  section: LOCATION_CACHE
-  edit_level: DYNAMIC_EFFECTIVE
-  description: "The timeout used for refreshing location cache by SQL. Range: [1ms, +∞)"
 
 - name: bf_cache_miss_count_threshold
   type: INT

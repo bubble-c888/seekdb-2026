@@ -1,0 +1,27 @@
+load("@rules_cc//cc:cc_test.bzl", "cc_test")
+load("//bazel:defs.bzl", "cc_library")
+
+package(default_testonly = True)
+
+cc_library(
+    name = "palf_disk_options_cases",
+    srcs = ["test_palf_disk_options.cpp"],
+    alwayslink = True,
+    deps = [
+        "//bazel/third_party:gtest",
+        "//src/logservice:palf_disk_options_test_headers",
+    ],
+)
+
+cc_test(
+    name = "test_palf_disk_options",
+    size = "small",
+    linkstatic = True,
+    # The shared runtime supplies C++; use rules_cc's relative $ORIGIN paths.
+    features = ["-static_cpp_runtime", "-static_link_cpp_runtimes"],
+    deps = [
+        ":palf_disk_options_cases",
+        "//src/observer:liboceanbase",
+    ],
+    target_compatible_with = ["@platforms//os:linux"],
+)

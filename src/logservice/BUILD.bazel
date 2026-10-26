@@ -88,6 +88,14 @@ _PRIVATE_HDRS = glob(
     exclude = _PUBLIC_HDRS,
 )
 
+cc_library(
+    name = "palf_disk_options_test_headers",
+    testonly = True,
+    deps = [":logservice"],
+    tags = ["manual"],
+    visibility = ["//unittest/logservice/palf:__pkg__"],
+)
+
 # One semantic module and one archive, retaining five independent Unity compile
 # actions for parallelism and incremental rebuild granularity.
 grouped_unity_cc_library(

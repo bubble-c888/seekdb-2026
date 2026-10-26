@@ -84,6 +84,8 @@ public:
 private:
   static const ObString DEFAULT_SCOPE;
   static bool is_valid_provider(const ObString &provider);
+  // Providers that talk to a locally hosted service and therefore do not need an api key.
+  static bool is_keyless_provider(const ObString &provider);
   int encrypt_access_key_(common::ObIAllocator &allocator, const ObString &access_key, ObString &encrypted_access_key);
   int decrypt_access_key_(common::ObIAllocator &allocator, const ObString &encrypted_access_key, ObString &unencrypted_access_key) const;
 private:

@@ -183,6 +183,20 @@ cc_library(
 # SQL's external seam owns only headers actually reached from outside SQL.
 # Semantic subpackages own their physical files and contribute header-only
 # targets; no implementation target is pulled into this interface.
+# Test-only header seam so unittest targets can include SQL public headers
+# (e.g. the AI function utils) without widening sql_runtime_interface visibility.
+cc_library(
+    name = "sql_unittest_headers",
+    testonly = True,
+    deps = [
+        ":sql_runtime_interface",
+        "//src/share:ai_endpoint_interface",
+        "//src/share:json_access",
+    ],
+    tags = ["manual"],
+    visibility = ["//unittest/sql:__subpackages__"],
+)
+
 cc_library(
     name = "sql_runtime_interface",
     hdrs = sql_headers_outside(

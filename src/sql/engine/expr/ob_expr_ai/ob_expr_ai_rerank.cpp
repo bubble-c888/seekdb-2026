@@ -213,12 +213,33 @@ int ObExprAIRerank::eval_ai_rerank_with_doc_key(const ObExpr &expr, ObEvalCtx &c
   ObJsonArray *doc_array = nullptr;
   ObJsonArray *result_array = nullptr;
   ObJsonArray *sorted_document_array = nullptr;
+  int64_t batch_size = 20; // max batch size for rerank, same as no doc_key path
   if (OB_FAIL(get_doc_array_from_documents_array_with_key(allocator, document_array, doc_key, doc_array))) {
   } else {
     ObAIFuncModel model(allocator, info, endpoint_info);
-    if (OB_FAIL(model.call_rerank(query, doc_array, result_array))) {
-    } else if (OB_FAIL(sort_document_array_by_model_result(allocator, document_array, result_array, sorted_document_array))) {
-    } 
+    ObString score_key(SCORE_KEY);
+    if (OB_FAIL(ObAIFuncJsonUtils::get_json_array(allocator, result_array))) {
+    }
+    for (int64_t i = 0; OB_SUCC(ret) && i < doc_array->element_count(); i += batch_size) {
+      int64_t end_idx = i + batch_size;
+      if (end_idx > doc_array->element_count()) {
+        end_idx = doc_array->element_count();
+      }
+      ObJsonArray *batch_doc_array = nullptr;
+      ObJsonArray *batch_result_array = nullptr;
+      ObJsonArray *compact_array = nullptr;
+      if (OB_FAIL(construct_batch_document_array(allocator, doc_array, i, end_idx, batch_doc_array))) {
+      } else if (OB_FAIL(model.call_rerank(query, batch_doc_array, batch_result_array))) {
+      } else if (OB_FAIL(batch_result_add_base(allocator, batch_result_array, i))) {
+      } else if (OB_FAIL(compact_json_array_by_key(allocator, result_array, batch_result_array, score_key, compact_array))) {
+      } else {
+        result_array = compact_array;
+      }
+    }
+    if (OB_SUCC(ret)) {
+      if (OB_FAIL(sort_document_array_by_model_result(allocator, document_array, result_array, sorted_document_array))) {
+      }
+    }
   }
   if (OB_SUCC(ret)) {
     ObString raw_str;
@@ -399,7 +420,7 @@ int ObExprAIRerank::compact_json_array_by_key(ObIAllocator &allocator, ObJsonArr
         if (OB_ISNULL(double1) || OB_ISNULL(double2)) {
           ret = OB_ERR_UNEXPECTED;
         } else {
-          if (double1->value() > double2->value()) {
+          if (double1->value() >= double2->value()) {
             if (OB_FAIL(result_array->append(obj1))) {
             }
             i++;

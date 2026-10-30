@@ -5297,8 +5297,25 @@ int ObResolverUtils::wait_for_sys_package_ready(ObSQLSessionInfo &session_info)
   if (config::_enable_async_load_sys_package() && !GCTX.sys_package_ready_
       && session_info.is_user_session() && share::server_is_write_enabled()) {
     const int64_t retry_interval_us = 100L * 1000L; // 100ms
+    const int64_t wait_start_ts = ObTimeUtility::current_time();
+    const int64_t max_wait_us = MAX(config::_ob_ddl_timeout(), 60L * 1000L * 1000L);
+    int64_t query_timeout = 0;
+    (void)session_info.get_query_timeout(query_timeout);
+    if (query_timeout <= 0) {
+      query_timeout = 10L * 1000L * 1000L;
+    }
     bool waited = false;
     while (!GCTX.sys_package_ready_ && OB_SUCC(ret)) {
+      const int64_t now = ObTimeUtility::current_time();
+      if (now - wait_start_ts < max_wait_us) {
+        session_info.set_query_start_time(now);
+        THIS_WORKER.set_timeout_ts(now + query_timeout);
+        if (NULL != session_info.get_cur_exec_ctx()
+            && NULL != session_info.get_cur_exec_ctx()->get_physical_plan_ctx()) {
+          session_info.get_cur_exec_ctx()->get_physical_plan_ctx()->set_timeout_timestamp(
+              now + query_timeout);
+        }
+      }
       if (NULL != session_info.get_cur_exec_ctx() && OB_FAIL(session_info.get_cur_exec_ctx()->check_status())) {
       } else {
         if (!waited) {
@@ -5313,7 +5330,15 @@ int ObResolverUtils::wait_for_sys_package_ready(ObSQLSessionInfo &session_info)
       LOG_WARN("sys package not ready after waiting");
     } else {
       if (waited) {
-        LOG_INFO("sys package ready after waiting");
+        const int64_t now = ObTimeUtility::current_time();
+        session_info.set_query_start_time(now);
+        THIS_WORKER.set_timeout_ts(now + query_timeout);
+        if (NULL != session_info.get_cur_exec_ctx()
+            && NULL != session_info.get_cur_exec_ctx()->get_physical_plan_ctx()) {
+          session_info.get_cur_exec_ctx()->get_physical_plan_ctx()->set_timeout_timestamp(
+              now + query_timeout);
+        }
+        LOG_INFO("sys package ready after waiting", "wait_us", now - wait_start_ts);
       }
       // Return OB_SCHEMA_EAGAIN to retry acquiring schema
       ret = OB_SCHEMA_EAGAIN;

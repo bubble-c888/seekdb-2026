@@ -50,14 +50,15 @@ int ObSystemPackageLoadTask::start(common::ObTimer &timer)
 {
   int ret = OB_SUCCESS;
   const bool did_repeat = true;
+  const int64_t schedule_interval_us = 500L * 1000L; // 500ms
   if (OB_UNLIKELY(!inited_)) {
     ret = OB_NOT_INIT;
   } else {
     if (timer.task_exist(*this)) {
       // ignore duplicate schedule
-    } else if (OB_FAIL(timer.schedule(*this, SCHEDULE_INTERVAL_US, did_repeat))) {
+    } else if (OB_FAIL(timer.schedule(*this, schedule_interval_us, did_repeat))) {
     } else {
-      LOG_INFO("finish schedule timer task", K(SCHEDULE_INTERVAL_US));
+      LOG_INFO("finish schedule timer task", K(schedule_interval_us));
     }
   }
   return ret;
@@ -100,12 +101,15 @@ int ObSystemPackageLoadTask::load_system_package_()
       LOG_INFO("find a success job or job_id not exist", KR(ret), K(job_id));
     } else {
     }
-  } else if (OB_FAIL(pl::ObPLPackageManager::load_all_common_sys_package(
-                         *sql_proxy,
-                         false/*from_file*/))) {
-  } else if (OB_FAIL(ADMIN_JOB_COMPLETE(job_id, 0/*result_code*/))) {
-  } else {
-    GCTX.sys_package_ready_ = true;
+  }
+  if (OB_SUCC(ret) && !GCTX.sys_package_ready_) {
+    if (OB_FAIL(pl::ObPLPackageManager::load_all_common_sys_package(
+                    *sql_proxy,
+                    false/*from_file*/))) {
+    } else if (OB_FAIL(ADMIN_JOB_COMPLETE(job_id, 0/*result_code*/))) {
+    } else {
+      GCTX.sys_package_ready_ = true;
+    }
   }
   return ret;
 }
@@ -115,7 +119,7 @@ void ObSystemPackageLoadTask::runTimerTask()
   int ret = OB_SUCCESS;
   if (OB_UNLIKELY(!inited_)) {
     ret = OB_NOT_INIT;
-  } else if (!share::server_is_write_enabled()) {
+  } else if (GCTX.in_bootstrap_ || !share::server_is_write_enabled()) {
     LOG_INFO("read-only server skips loading sys package");
   } else if (GCTX.sys_package_ready_) {
     LOG_INFO("sys package already loaded");

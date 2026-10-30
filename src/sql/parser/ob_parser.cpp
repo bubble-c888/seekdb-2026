@@ -834,6 +834,197 @@ void ObParser::get_single_sql(const common::ObString &stmt, int64_t offset, int6
     in_string = sq_flag || bt_flag || dq_flag;
   }
 }
+static bool parser_is_ascii_space(const char c)
+{
+  return ' ' == c || '\t' == c || '\n' == c || '\r' == c || '\f' == c;
+}
+
+static bool parser_is_ident_char(const char c)
+{
+  return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
+         || (c >= '0' && c <= '9') || '_' == c || '$' == c;
+}
+
+static bool parser_word_equal(const char *ptr, const int64_t len, const char *word)
+{
+  const int64_t word_len = static_cast<int64_t>(strlen(word));
+  bool equal = len == word_len;
+  for (int64_t i = 0; equal && i < word_len; ++i) {
+    char a = ptr[i];
+    char b = word[i];
+    if (a >= 'A' && a <= 'Z') { a = static_cast<char>(a - 'A' + 'a'); }
+    if (b >= 'A' && b <= 'Z') { b = static_cast<char>(b - 'A' + 'a'); }
+    equal = (a == b);
+  }
+  return equal;
+}
+
+// The task-2 grammar accepts BOOL_VALUE in a normal expression, but the
+// table-function option production is context-sensitive.  Normalize the
+// boolean option spelling to 1/0 only inside read_* table-function calls;
+// this keeps boolean literals elsewhere (notably ai_prompt JSON arguments)
+// untouched.
+static int normalize_file_table_bool_options(ObIAllocator &allocator,
+                                             const ObString &stmt,
+                                             ObString &normalized)
+{
+  int ret = OB_SUCCESS;
+  normalized = stmt;
+  const char *input = stmt.ptr();
+  const int64_t len = stmt.length();
+  bool changed = false;
+  int64_t i = 0;
+  while (i < len && !changed) {
+    if (parser_is_ident_char(input[i])) {
+      const int64_t word_start = i;
+      while (i < len && parser_is_ident_char(input[i])) { ++i; }
+      const int64_t word_len = i - word_start;
+      bool is_file_func = parser_word_equal(input + word_start, word_len, "read_csv")
+          || parser_word_equal(input + word_start, word_len, "read_json")
+          || parser_word_equal(input + word_start, word_len, "read_ndjson")
+          || parser_word_equal(input + word_start, word_len, "read_parquet");
+      int64_t j = i;
+      while (j < len && parser_is_ascii_space(input[j])) { ++j; }
+      if (is_file_func && j < len && '(' == input[j]) {
+        // Scan the argument list and replace boolean values immediately after
+        // an option '='.  Path string contents are skipped.
+        int64_t k = j + 1;
+        int64_t depth = 1;
+        char quote = 0;
+        bool after_equal = false;
+        for (; k < len && depth > 0; ++k) {
+          const char c = input[k];
+          if (quote != 0) {
+            if ('\\' == c && k + 1 < len) {
+              ++k;
+            } else if (c == quote) {
+              quote = 0;
+            }
+            continue;
+          }
+          if ('\'' == c || '"' == c || '`' == c) {
+            quote = c;
+          } else if ('(' == c) {
+            ++depth;
+          } else if (')' == c) {
+            --depth;
+          } else if ('=' == c) {
+            after_equal = true;
+          } else if (after_equal && !parser_is_ascii_space(c)) {
+            if (parser_is_ident_char(c)) {
+              int64_t value_start = k;
+              while (k < len && parser_is_ident_char(input[k])) { ++k; }
+              const int64_t value_len = k - value_start;
+              if (parser_word_equal(input + value_start, value_len, "true")
+                  || parser_word_equal(input + value_start, value_len, "false")) {
+                changed = true;
+                break;
+              }
+              --k;
+            }
+            after_equal = false;
+          } else if (after_equal && (',' == c || ')' == c)) {
+            after_equal = false;
+          }
+        }
+      }
+    } else {
+      ++i;
+    }
+  }
+  if (changed) {
+    char *out = static_cast<char *>(allocator.alloc(len + 1));
+    if (OB_ISNULL(out)) {
+      ret = OB_ALLOCATE_MEMORY_FAILED;
+    } else {
+      int64_t out_len = 0;
+      int64_t pos = 0;
+      bool in_func = false;
+      int64_t depth = 0;
+      char quote = 0;
+      bool after_equal = false;
+      while (OB_SUCC(ret) && pos < len) {
+        const char c = input[pos];
+        if (!in_func) {
+          if (parser_is_ident_char(c)) {
+            const int64_t start = pos;
+            while (pos < len && parser_is_ident_char(input[pos])) { ++pos; }
+            const int64_t word_len = pos - start;
+            const bool is_file_func = parser_word_equal(input + start, word_len, "read_csv")
+                || parser_word_equal(input + start, word_len, "read_json")
+                || parser_word_equal(input + start, word_len, "read_ndjson")
+                || parser_word_equal(input + start, word_len, "read_parquet");
+            memcpy(out + out_len, input + start, word_len);
+            out_len += word_len;
+            if (is_file_func) {
+              int64_t n = pos;
+              while (n < len && parser_is_ascii_space(input[n])) { ++n; }
+              if (n < len && '(' == input[n]) {
+                in_func = true;
+                depth = 0;
+              }
+            }
+          } else {
+            out[out_len++] = c;
+            ++pos;
+          }
+          continue;
+        }
+        if (quote != 0) {
+          out[out_len++] = c;
+          if ('\\' == c && pos + 1 < len) {
+            out[out_len++] = input[++pos];
+          } else if (c == quote) {
+            quote = 0;
+          }
+          ++pos;
+        } else if ('\'' == c || '"' == c || '`' == c) {
+          quote = c;
+          out[out_len++] = c;
+          ++pos;
+        } else if ('(' == c) {
+          ++depth;
+          out[out_len++] = c;
+          ++pos;
+        } else if (')' == c) {
+          out[out_len++] = c;
+          ++pos;
+          if (--depth <= 0) {
+            in_func = false;
+          }
+        } else if ('=' == c) {
+          after_equal = true;
+          out[out_len++] = c;
+          ++pos;
+        } else if (after_equal && !parser_is_ascii_space(c) && parser_is_ident_char(c)) {
+          const int64_t start = pos;
+          while (pos < len && parser_is_ident_char(input[pos])) { ++pos; }
+          const int64_t word_len = pos - start;
+          if (parser_word_equal(input + start, word_len, "true")
+              || parser_word_equal(input + start, word_len, "false")) {
+            out[out_len++] = parser_word_equal(input + start, word_len, "true") ? '1' : '0';
+          } else {
+            memcpy(out + out_len, input + start, word_len);
+            out_len += word_len;
+          }
+          after_equal = false;
+        } else {
+          if (after_equal && !parser_is_ascii_space(c)) {
+            after_equal = false;
+          }
+          out[out_len++] = c;
+          ++pos;
+        }
+      }
+      if (OB_SUCC(ret)) {
+        out[out_len] = '\0';
+        normalized.assign_ptr(out, static_cast<int32_t>(out_len));
+      }
+    }
+  }
+  return ret;
+}
+
 int ObParser::parse_sql(const ObString &stmt,
                         ParseResult &parse_result,
                         const bool no_throw_parser_error)
@@ -841,12 +1032,19 @@ int ObParser::parse_sql(const ObString &stmt,
   int ret = OB_SUCCESS;
   ObSQLParser sql_parser(*(ObIAllocator*)(parse_result.malloc_pool_), sql_mode_);
   ObString stmt_str = stmt;
-  if (OB_FAIL(sql_parser.parse(stmt.ptr(), stmt.length(), parse_result))) {
+  ObString normalized_stmt;
+  if (OB_FAIL(normalize_file_table_bool_options(*(ObIAllocator*)(parse_result.malloc_pool_),
+                                                stmt, normalized_stmt))) {
+  } else if (!normalized_stmt.empty() && normalized_stmt.ptr() != stmt.ptr()) {
+    stmt_str = normalized_stmt;
+  }
+  if (OB_FAIL(ret)) {
+  } else if (OB_FAIL(sql_parser.parse(stmt_str.ptr(), stmt_str.length(), parse_result))) {
     // if is multi_values_parser opt not need retry
     if (!parse_result.is_multi_values_parser_) {
       parse_result.enable_compatible_comment_ = false;
       parse_result.mysql_compatible_comment_ = false;
-      if (OB_FAIL(sql_parser.parse(stmt.ptr(), stmt.length(), parse_result))) {
+      if (OB_FAIL(sql_parser.parse(stmt_str.ptr(), stmt_str.length(), parse_result))) {
         //do nothing.
       }
     }

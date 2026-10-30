@@ -27,6 +27,7 @@
 #include <stdlib.h>
 #include <string.h>
 #if defined(_WIN32)
+#include <filesystem>
 #include <io.h>
 #endif
 
@@ -440,7 +441,9 @@ int parse_csv_field(common::ObIAllocator &alloc,
     const int64_t start = i;
     bool closed = false;
     while (i < len && !closed) {
-      if ('"' == buf[i]) {
+      if ('\\' == buf[i] && i + 1 < len) {
+        i += 2;
+      } else if ('"' == buf[i]) {
         if (i + 1 < len && '"' == buf[i + 1]) {
           i += 2;
         } else {
@@ -463,7 +466,11 @@ int parse_csv_field(common::ObIAllocator &alloc,
       } else {
         int32_t out = 0;
         for (int64_t k = 0; k < raw_len; ++k) {
-          if ('"' == dst[k] && k + 1 < raw_len && '"' == dst[k + 1]) {
+          // COPY TO uses the CSV writer's backslash escape mode.  Accept it
+          // here as well as the standard doubled-quote form.
+          if ('\\' == dst[k] && k + 1 < raw_len) {
+            ++k;
+          } else if ('"' == dst[k] && k + 1 < raw_len && '"' == dst[k + 1]) {
             ++k;
           }
           if ('\r' == dst[k] && k + 1 < raw_len && '\n' == dst[k + 1]) {
@@ -1195,33 +1202,62 @@ int ObFileSqlReader::read_glob(const ObFileSqlOptions &opts, ObFileSqlTableData 
     ::globfree(&glob_buf);
   }
 #elif defined(_WIN32)
-  char *pattern = NULL;
-  if (OB_FAIL(ret)) {
-  } else if (OB_FAIL(str_dup(table.alloc_, opts.path_.ptr(), opts.path_.length(), pattern))) {
-  } else {
-    std::vector<std::string> matches;
-    struct _finddata_t file_info;
-    intptr_t handle = ::_findfirst(pattern, &file_info);
-    if (-1 == handle) {
-      if (ENOENT != errno) {
-        ret = OB_IO_ERROR;
-        LOG_WARN("failed to glob on windows", K(opts.path_), K(errno), K(ret));
+  {
+    std::string pattern(opts.path_.ptr(), opts.path_.length());
+    const size_t separator = pattern.find_last_of("/\\");
+    const std::string directory = std::string::npos == separator
+        ? std::string(".") : pattern.substr(0, separator);
+    const std::string file_pattern = std::string::npos == separator
+        ? pattern : pattern.substr(separator + 1);
+    auto match_pattern = [](const std::string &text, const std::string &pat) {
+      const int64_t n = static_cast<int64_t>(text.size());
+      const int64_t m = static_cast<int64_t>(pat.size());
+      std::vector<unsigned char> prev(m + 1, 0);
+      std::vector<unsigned char> cur(m + 1, 0);
+      prev[0] = 1;
+      for (int64_t j = 1; j <= m; ++j) {
+        prev[j] = ('*' == pat[j - 1]) && prev[j - 1];
       }
-    } else {
-      const std::string pattern_str(pattern);
-      const size_t separator = pattern_str.find_last_of("/\\");
-      const std::string directory = std::string::npos == separator
-          ? std::string() : pattern_str.substr(0, separator + 1);
-      do {
-        if (0 == (file_info.attrib & _A_SUBDIR)) {
-          matches.push_back(directory + file_info.name);
+      for (int64_t i = 1; i <= n; ++i) {
+        cur.assign(m + 1, 0);
+        const unsigned char tc = static_cast<unsigned char>(text[i - 1]);
+        for (int64_t j = 1; j <= m; ++j) {
+          const unsigned char pc = static_cast<unsigned char>(pat[j - 1]);
+          if ('*' == pc) {
+            cur[j] = cur[j - 1] || prev[j];
+          } else {
+            const unsigned char a = (tc >= 'A' && tc <= 'Z') ? tc + 32 : tc;
+            const unsigned char b = (pc >= 'A' && pc <= 'Z') ? pc + 32 : pc;
+            cur[j] = ((a == b) || '?' == pc) && prev[j - 1];
+          }
         }
-      } while (0 == ::_findnext(handle, &file_info));
-      ::_findclose(handle);
-      if (ENOENT != errno && !matches.empty()) {
-        // A nonzero _findnext result is normal at end of enumeration; only a
-        // failure before any match is reported above.
+        prev.swap(cur);
       }
+      return prev[m] != 0;
+    };
+    std::vector<std::string> matches;
+    std::error_code ec;
+    for (std::filesystem::directory_iterator it(directory, ec), end_it;
+         !ec && it != end_it; it.increment(ec)) {
+      std::error_code type_ec;
+      if (!it->is_regular_file(type_ec)) {
+        continue;
+      }
+      const std::string name = it->path().filename().string();
+      if (match_pattern(name, file_pattern)) {
+        std::string full = directory;
+        if (!full.empty() && '/' != full.back() && '\\' != full.back()) {
+          full.push_back('/');
+        }
+        full.append(name);
+        matches.push_back(full);
+      }
+    }
+    if (ec) {
+      ret = OB_IO_ERROR;
+      LOG_WARN("failed to glob on windows", K(opts.path_), K(ec.value()),
+               K(ec.message().c_str()), K(ret));
+    } else {
       std::sort(matches.begin(), matches.end());
       for (size_t i = 0; OB_SUCC(ret) && i < matches.size(); ++i) {
         char *path = NULL;

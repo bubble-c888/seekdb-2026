@@ -5,6 +5,7 @@ import json
 import os
 import signal
 import socket
+import tempfile
 import subprocess
 import sys
 import threading
@@ -14,7 +15,7 @@ from urllib.parse import urlparse
 
 
 def state_dir(port):
-    return "/tmp/seekdb_ai_column_mock_%d" % port
+    return os.path.join(tempfile.gettempdir(), "seekdb_ai_column_mock_%d" % port)
 
 
 def state_path(port, name):
@@ -44,10 +45,10 @@ def stop_server(port):
         for _ in range(50):
             try:
                 os.kill(pid, 0)
-            except ProcessLookupError:
+            except (ProcessLookupError, OSError):
                 break
             time.sleep(0.02)
-    except (ValueError, ProcessLookupError):
+    except (ValueError, ProcessLookupError, OSError):
         pass
     try:
         os.unlink(pid_path)

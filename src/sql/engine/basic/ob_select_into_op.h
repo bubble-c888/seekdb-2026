@@ -64,7 +64,6 @@ public:
       closed_cht_(),
       is_optional_(false),
       select_exprs_(alloc),
-      header_names_(alloc),
       is_single_(true),
       max_file_size_(DEFAULT_MAX_FILE_SIZE),
       escaped_cht_(),
@@ -72,6 +71,7 @@ public:
       parallel_(1),
       buffer_size_(DEFAULT_BUFFER_SIZE),
       is_overwrite_(false),
+      column_names_(alloc),
       external_properties_(alloc)
   {
   }
@@ -84,7 +84,6 @@ public:
   common::ObObj closed_cht_;
   bool is_optional_;
   common::ObFixedArray<ObExpr*, common::ObIAllocator> select_exprs_;
-  common::ObFixedArray<common::ObString, common::ObIAllocator> header_names_;
   bool is_single_;
   int64_t max_file_size_;
   common::ObObj escaped_cht_;
@@ -92,6 +91,7 @@ public:
   int64_t parallel_;
   int64_t buffer_size_;
   bool is_overwrite_;
+  common::ObFixedArray<common::ObString, common::ObIAllocator> column_names_;
   ObExternalFileFormat::StringData external_properties_;
   static const int64_t DEFAULT_MAX_FILE_SIZE = 256LL * 1024 * 1024;
   static const int64_t DEFAULT_BUFFER_SIZE = 1LL * 1024 * 1024;
@@ -108,8 +108,6 @@ public:
       line_str_(),
       cs_type_(CS_TYPE_INVALID),
       basic_url_(),
-      final_url_(),
-      using_tmp_file_(false),
       data_writer_(NULL),
       char_enclose_(0),
       char_escape_('\\'),
@@ -119,6 +117,7 @@ public:
       has_lob_(false),
       has_json_(false),
       has_coll_(false),
+      header_written_(false),
       print_params_(),
       escape_printer_(),
       json_buf_(NULL),
@@ -127,8 +126,6 @@ public:
       shared_buf_len_(0),
       use_shared_buf_(false),
       has_compress_(false),
-      null_str_(),
-      header_written_(false),
       external_properties_(),
       format_type_(ObExternalFileFormat::FormatType::CSV_FORMAT),
       block_id_(0),
@@ -204,6 +201,7 @@ private:
   int init_env_common();
   int init_csv_env();
   void set_csv_format_options();
+  int write_header_row(ObCsvFileWriter &data_writer);
 
   int get_row_str(const int64_t buf_len, bool is_first_row, char *buf, int64_t &pos);
   int into_dumpfile(ObExternalFileWriter *data_writer);
@@ -260,7 +258,6 @@ private:
   int calc_outfile_path();
   int create_shared_buffer_for_data_writer();
   int create_the_only_data_writer(ObExternalFileWriter *&data_writer);
-  int write_header_csv(ObCsvFileWriter &data_writer);
   int new_data_writer(ObExternalFileWriter *&data_writer);
   int check_secure_file_path(ObString file_name);
   char *get_json_buf() { return json_buf_; }
@@ -278,8 +275,6 @@ private:
   ObObj file_name_;
   common::ObCollationType cs_type_;
   ObString basic_url_; // url without partition expr
-  ObString final_url_;
-  bool using_tmp_file_;
   ObExternalFileWriter* data_writer_;
   char char_enclose_;
   char char_escape_;
@@ -289,6 +284,7 @@ private:
   bool has_lob_;
   bool has_json_;
   bool has_coll_;
+  bool header_written_;
   common::ObObjPrintParams print_params_;
   ObEscapePrinter escape_printer_;
   char *json_buf_;  // json needs one more buffer to hold the string before escaping
@@ -297,8 +293,6 @@ private:
   int64_t shared_buf_len_;
   bool use_shared_buf_;
   bool has_compress_;
-  ObString null_str_;
-  bool header_written_;
   ObExternalFileFormat external_properties_;
   ObExternalFileFormat::FormatType format_type_;
   uint32_t block_id_;

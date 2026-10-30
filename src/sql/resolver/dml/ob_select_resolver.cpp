@@ -3022,12 +3022,14 @@ int ObSelectResolver::resolve_into_outfile_with_format(const ParseNode *node, Ob
                                      ? ObCharset::get_default_collation(external_format.csv_format_.cs_type_)
                                      : ObCharset::get_system_collation();
       if (OB_FAIL(external_format.csv_format_.init_format(ObDataInFileStruct(), 0, file_cs_type))) {
-      } else if (int64_t(INT64_MAX) == external_format.csv_format_.field_enclosed_char_) {
-        // Formatted CSV export should be RFC-4180 compatible by default so the
-        // result can be read back by read_csv. Explicit CLOSED BY options can
-        // still override this below.
+      }
+      if (OB_SUCC(ret) && 1 == node->value_) { // COPY TO: CSV export defaults
+        external_format.csv_format_.field_term_str_ = ObString(",");
+        // Quote string fields so commas, embedded newlines and quotes survive
+        // the CSV round trip.  The reader already implements RFC-style
+        // doubled-quote unescaping.
         external_format.csv_format_.field_enclosed_char_ = '"';
-        external_format.csv_format_.field_escaped_char_ = '"';
+        external_format.csv_format_.is_optional_ = true;
       }
     }
     for (int i = 0; OB_SUCC(ret) && i < format_node->num_child_; ++i) {

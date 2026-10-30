@@ -17,6 +17,7 @@
 #define USING_LOG_PREFIX SQL
 #include "config_bridge.h"
 #include "sql/ob_sql.h"
+#include "sql/resolver/ddl/ob_explain_stmt.h"
 #include "lib/json/ob_json_print_utils.h"
 #include "lib/stat/ob_diagnostic_info_guard.h"
 #include "query/runtime/ob_query_runtime_environment.h"
@@ -25,7 +26,6 @@
 #include "sql/plan_cache/ob_pcv_set.h"
 #include "sql/ob_sql_init.h"
 #include "sql/resolver/ob_resolver.h"
-#include "sql/resolver/dml/ob_select_stmt.h"
 #include "sql/resolver/cmd/ob_variable_set_stmt.h"
 #include "sql/resolver/cmd/ob_call_procedure_stmt.h"
 #include "sql/resolver/cmd/ob_anonymous_block_stmt.h"
@@ -271,19 +271,46 @@ int ObSql::fill_result_set(ObResultSet &result_set,
       break;
     }
     case stmt::T_EXPLAIN: {
-      ObString tname = ObString::make_string("explain_table");
-      ObString cname = ObString::make_string("Query Plan");
-      field.tname_ = tname;
-      field.org_tname_ = tname;
-      field.cname_ = cname;
-      field.org_cname_ = cname;
-      field.type_.set_type(ObVarcharType);
-      field.charsetnr_ = CS_TYPE_UTF8MB4_GENERAL_CI;
-      field.type_.set_collation_type(CS_TYPE_UTF8MB4_GENERAL_CI);
-      field.type_.set_collation_level(CS_LEVEL_IMPLICIT);
-      field.type_.set_varchar(type_name);
-      if (OB_FAIL(result_set.reserve_field_columns(1))) {
-      } else if (OB_FAIL(result_set.add_field_column(field))) {
+      bool file_describe = false;
+      if (basic_stmt.is_explain_stmt()) {
+        file_describe = static_cast<const ObExplainStmt &>(basic_stmt).is_file_describe();
+      }
+      if (file_describe) {
+        // DuckDB-style schema output for file table functions
+        static const char *describe_cols[] = {
+            "column_name", "column_type", "null", "key", "default", "extra"};
+        if (OB_FAIL(result_set.reserve_field_columns(6))) {
+        } else {
+          for (int64_t i = 0; OB_SUCC(ret) && i < 6; ++i) {
+            ObField f;
+            f.tname_ = ObString::make_string("describe_table");
+            f.org_tname_ = f.tname_;
+            f.cname_ = ObString::make_string(describe_cols[i]);
+            f.org_cname_ = f.cname_;
+            f.type_.set_type(ObVarcharType);
+            f.charsetnr_ = CS_TYPE_UTF8MB4_GENERAL_CI;
+            f.type_.set_collation_type(CS_TYPE_UTF8MB4_GENERAL_CI);
+            f.type_.set_collation_level(CS_LEVEL_IMPLICIT);
+            f.type_.set_varchar(type_name);
+            if (OB_FAIL(result_set.add_field_column(f))) {
+            }
+          }
+        }
+      } else {
+        ObString tname = ObString::make_string("explain_table");
+        ObString cname = ObString::make_string("Query Plan");
+        field.tname_ = tname;
+        field.org_tname_ = tname;
+        field.cname_ = cname;
+        field.org_cname_ = cname;
+        field.type_.set_type(ObVarcharType);
+        field.charsetnr_ = CS_TYPE_UTF8MB4_GENERAL_CI;
+        field.type_.set_collation_type(CS_TYPE_UTF8MB4_GENERAL_CI);
+        field.type_.set_collation_level(CS_LEVEL_IMPLICIT);
+        field.type_.set_varchar(type_name);
+        if (OB_FAIL(result_set.reserve_field_columns(1))) {
+        } else if (OB_FAIL(result_set.add_field_column(field))) {
+        }
       }
       break;
     }
@@ -1175,6 +1202,8 @@ int ObSql::prepare_pl_sql(const ObString &sql,
   return ret;
 }
 
+static bool sql_has_file_table_function(const ObString &stmt);
+
 int ObSql::handle_sql_execute(const ObString &sql,
                               ObSqlCtx &context,
                               ObResultSet &result,
@@ -1928,6 +1957,36 @@ int ObSql::handle_ps_execute(const ObPsStmtId client_stmt_id,
   return ret;
 }
 
+static bool sql_has_file_table_function(const ObString &stmt)
+{
+  static const char *const names[] = {"read_csv", "read_json", "read_ndjson", "read_parquet", "glob"};
+  bool found = false;
+  const char *ptr = stmt.ptr();
+  const int64_t len = stmt.length();
+  for (int64_t i = 0; !found && i < len; ++i) {
+    if (i > 0) {
+      const char prev = ptr[i - 1];
+      if ((prev >= 'a' && prev <= 'z') || (prev >= 'A' && prev <= 'Z')
+          || (prev >= '0' && prev <= '9') || '_' == prev || '$' == prev) {
+        continue;
+      }
+    }
+    for (int64_t n = 0; !found && n < static_cast<int64_t>(ARRAYSIZEOF(names)); ++n) {
+      const int64_t name_len = static_cast<int64_t>(strlen(names[n]));
+      if (i + name_len <= len && 0 == STRNCASECMP(ptr + i, names[n], name_len)) {
+        const int64_t next = i + name_len;
+        if (next == len || !((ptr[next] >= 'a' && ptr[next] <= 'z')
+                            || (ptr[next] >= 'A' && ptr[next] <= 'Z')
+                            || (ptr[next] >= '0' && ptr[next] <= '9')
+                            || '_' == ptr[next] || '$' == ptr[next])) {
+          found = true;
+        }
+      }
+    }
+  }
+  return found;
+}
+
 OB_INLINE int ObSql::handle_text_query(const ObString &stmt, ObSqlCtx &context, ObResultSet &result)
 {
   int ret = OB_SUCCESS;
@@ -1948,7 +2007,8 @@ OB_INLINE int ObSql::handle_text_query(const ObString &stmt, ObSqlCtx &context, 
   
   ObExecContext& ectx = result.get_exec_context();
   int get_plan_err = OB_SUCCESS; //used for judge whether add plan to plan cache
-  bool use_plan_cache = session.get_local_ob_enable_plan_cache();
+  bool use_plan_cache = session.get_local_ob_enable_plan_cache()
+      && !sql_has_file_table_function(trimed_stmt);
   ObPlanCacheCtx *pc_ctx = NULL;
   bool is_begin_commit_stmt = false;
 
@@ -2488,24 +2548,7 @@ int ObSql::generate_stmt_with_reconstruct_sql(ObDMLStmt* &stmt,
   ObObjPrintParams print_param;
   ObSQLSessionInfo *session = sql_ctx.session_info_;
   ObPhysicalPlanCtx *phy_plan_ctx = NULL;
-  bool skip_reconstruct = false;
-  if (!OB_ISNULL(stmt) && stmt->is_select_stmt()) {
-    ObSelectStmt *select_stmt = static_cast<ObSelectStmt *>(stmt);
-    const ObIArray<TableItem *> &table_items = select_stmt->get_table_items();
-    for (int64_t i = 0; !skip_reconstruct && i < table_items.count(); ++i) {
-      const TableItem *table_item = table_items.at(i);
-      if (NULL != table_item && table_item->is_values_table()
-          && NULL != table_item->values_table_def_
-          && table_item->values_table_def_->column_names_.count() > 0) {
-        // statement derived from a file sql table function: rows are already
-        // materialized as literal values, sql reconstruction is not applicable
-        skip_reconstruct = true;
-      }
-    }
-  }
-  if (skip_reconstruct) {
-    // do nothing: file sql statement needs no sql reconstruction
-  } else if (OB_ISNULL(session) || OB_ISNULL(pc_ctx) ||
+  if (OB_ISNULL(session) || OB_ISNULL(pc_ctx) ||
       OB_ISNULL(stmt) || (OB_ISNULL(stmt->get_query_ctx())) ||
       OB_ISNULL(phy_plan_ctx=pc_ctx->exec_ctx_.get_physical_plan_ctx())) {
     ret = OB_ERR_UNEXPECTED;

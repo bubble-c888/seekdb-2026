@@ -24,7 +24,9 @@ int   seekdb_cuvs_search(void* handle, const float* query, long nq, long topk,
                          unsigned int* out_ids, float* out_dist);
 void  seekdb_cuvs_free(void* handle);
 int seekdb_cuvs_serialize(void* handle, const char* filename);
-void* seekdb_cuvs_deserialize(const char* filename, long n, long dim);
+/* Graph-only snapshots are paired with the FP32 vectors/IDs already stored by
+ * seekdb's outer snapshot, so restore needs the original vectors. */
+void* seekdb_cuvs_deserialize(const char* filename, const float* vectors, long n, long dim);
 #ifdef __cplusplus
 }
 #endif

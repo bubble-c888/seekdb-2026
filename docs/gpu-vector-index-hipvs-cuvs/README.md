@@ -23,6 +23,12 @@ The product integration lives in:
 - [`ob_vsag_adaptor.cpp`](../../src/oblib/lib/vector/ob_vsag_adaptor.cpp):
   per-index marking, buffered vectors, lazy CAGRA build/search, freshness and
   safety fallback, trace points, and batch entry points.
+- [`seekdb_cuvs_bridge.c`](../../tools/hipvs_bridge/seekdb_cuvs_bridge.c):
+  persistent query workspaces, CAGRA parameter selection, graph-only snapshot
+  serialization, and C-ABI lifecycle management.
+- [`seekdb_cuvs_fp16_build.cpp`](../../tools/hipvs_bridge/seekdb_cuvs_fp16_build.cpp):
+  optional FP16 graph construction followed by reconstruction of the
+  searchable index over the original FP32 vectors.
 - [`ob_plugin_vector_index_adaptor.cpp`](../../src/observer/vector_index/ob_plugin_vector_index_adaptor.cpp):
   maps declarative `lib=cuvs` indexes to the adaptor handle.
 - [`ob_vector_index_util.cpp`](../../src/observer/vector_index/ob_vector_index_util.cpp):
@@ -40,14 +46,32 @@ the server. The maintained bridge source and build entry point are under
 tools/hipvs_bridge/build.sh /work/bridge/libseekdb_cuvs_bridge.so
 ```
 
-The bridge exports:
+The bridge exports the build/search/free/persistence C ABI. Query workspaces
+and CAGRA search parameters are created once per index and reused across calls;
+single-row SQL searches therefore avoid three RMM allocations and repeated
+parameter allocation on every query.
 
-```text
-seekdb_cuvs_build
-seekdb_cuvs_search
-seekdb_cuvs_free
-seekdb_cuvs_cagra_knn
-```
+Snapshot serialization stores the CAGRA graph separately from the outer
+snapshot's FP32 vectors and external IDs. Restore combines the two instead of
+writing the vector dataset twice.
+
+## AMD build acceleration
+
+For large, lower-dimensional inputs (`n >= 100000`, `dim <= 128`), the bridge
+builds the NN-Descent graph through an FP16 host view, copies the resulting
+graph back, and reconstructs the searchable CAGRA index with the original FP32
+dataset. This is the SIFT-like path:
+
+- graph degree: 128;
+- intermediate graph degree: 192;
+- NN-Descent iterations: 100;
+- graph construction precision: FP16;
+- search dataset and distances: FP32.
+
+Higher-dimensional inputs keep the V5 quality profile (`128/256/100`, FP32
+graph construction) used to satisfy the hidden 256-dimensional recall gate.
+The heuristic depends only on input size and dimension; it does not inspect
+dataset names or evaluation metadata.
 
 Build seekdb with the resulting library:
 
@@ -96,6 +120,15 @@ See [`examples/batch_knn.sql`](examples/batch_knn.sql) for the table contract.
 
 ## Validation
 
+The paired contest build benchmark and the report fields are documented in
+[`BUILD_BENCHMARK.md`](BUILD_BENCHMARK.md). On a Radeon host, the bridge build,
+Top-10/Top-100 buffer reuse, and graph-only snapshot round trip can be checked
+with:
+
+```bash
+tools/hipvs_bridge/run_persistence_test.sh /tmp/seekdb-cuvs-persistence-test
+```
+
 The self-contained GPU smoke runner generates deterministic vectors and ground
 truth; it does not use private `/work/datasets` or `/work/bench` assets:
 
@@ -129,8 +162,9 @@ The no-GPU DDL contract remains covered by
 ## Current limitations
 
 - Phase 1 supports dense float32 L2 indexes only.
-- GPU indexes are process-local and rebuilt lazily; persistence and cache reuse
-  are follow-up work.
+- GPU indexes are process-local and rebuilt lazily.
+- Graph-only snapshots require the FP32 vector payload emitted by seekdb's
+  outer snapshot.
 - The explicit batch API rebuilds its CAGRA index per call.
 - GPU validation is manual because upstream CI has no compatible GPU runner.
 - Multi-GPU, long-duration, and snapshot-reload coverage are out of scope for

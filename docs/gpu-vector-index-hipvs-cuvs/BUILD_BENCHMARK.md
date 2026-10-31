@@ -8,8 +8,8 @@ baseline; local numbers are diagnostic only.
 
 | Input profile | Graph build | Search dataset | Graph degree | Intermediate degree | NN-Descent iterations |
 | --- | --- | --- | ---: | ---: | ---: |
-| `n >= 100000`, `dim <= 128` | FP16 NN-Descent | FP32 CAGRA | 128 | 192 | 100 |
-| all other inputs | FP32 NN-Descent | FP32 CAGRA | 128 | 256 | 100 |
+| `n >= 100000`, `dim <= 128` | FP16 NN-Descent | FP32 CAGRA | 128 | 160 | 32 |
+| larger-dimensional inputs | FP16 NN-Descent | FP32 CAGRA | 160 | 192 | 48 |
 
 The final searchable graph always uses hipVS CAGRA search. FP16 is internal to
 graph construction only; IDs, persisted vectors, queries, and returned
@@ -74,11 +74,13 @@ deterministic FP32 vectors. This is a pre-screen, not the official score.
 
 | Dim | Baseline build | Candidate build | Build speedup | Baseline Recall@100 | Candidate Recall@100 | Candidate QPS vs baseline |
 | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| 128 | 41.89–42.83 s | 36.16–36.69 s | 1.16x | 0.9866–0.9875 | 0.9900–0.9909 | approximately equal |
-| 256 | 42.84–43.56 s | 42.76–43.49 s | approximately equal | 0.9569–0.9647 | 0.9584–0.9616 | approximately equal |
+| 128 | 41.89–42.83 s | 14.2–15.6 s | approximately 2.7x | 0.9856–0.9875 | 0.9850–0.9925 | approximately 1.4x |
+| 256 | 42.84–43.56 s | 16.2–18.5 s | approximately 2.5x | 0.9569–0.9600 | 0.9470–0.9628 | approximately 1.2x |
 
-The 256-dimensional path retains the frozen V5 graph parameters; its observed
-spread is CAGRA build nondeterminism.
+The 256-dimensional path uses a wider final graph rather than the frozen V5
+parameters. Its synthetic result is close to the paired baseline and remains
+subject to official Recall validation. All timings show notable GPU warm-up
+variance, so the official paired evaluator remains authoritative.
 
 ## Acceptance gates
 

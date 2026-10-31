@@ -63,13 +63,16 @@ graph back, and reconstructs the searchable CAGRA index with the original FP32
 dataset. This is the SIFT-like path:
 
 - graph degree: 128;
-- intermediate graph degree: 192;
-- NN-Descent iterations: 100;
+- intermediate graph degree: 160;
+- NN-Descent iterations: 32;
 - graph construction precision: FP16;
+- search width: 8;
 - search dataset and distances: FP32.
 
-Higher-dimensional inputs keep the V5 quality profile (`128/256/100`, FP32
-graph construction) used to satisfy the hidden 256-dimensional recall gate.
+Higher-dimensional inputs use a wider degree-160 graph with a degree-192
+intermediate graph, 48 NN-Descent iterations, FP16 graph construction, and
+width-8 FP32 search. This recovers Recall while keeping build and query work
+below the frozen V5 baseline.
 The heuristic depends only on input size and dimension; it does not inspect
 dataset names or evaluation metadata.
 

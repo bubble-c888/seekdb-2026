@@ -56,16 +56,16 @@ static sk_build_profile sk_choose_build_profile(long n, long dim)
      * minimum recommended 1.5x intermediate degree cuts build work while the
      * persisted/searchable index keeps the original FP32 vectors. */
     p.graph_degree = 128;
-    p.intermediate_graph_degree = 192;
-    p.nn_descent_niter = 100;
+    p.intermediate_graph_degree = 160;
+    p.nn_descent_niter = 32;
     p.fp16_graph = 1;
   } else {
-    /* Preserve the contest baseline's quality profile for 256-dimensional
-     * hidden data: degree 128 and degree 256 intermediate NN-Descent graph. */
-    p.graph_degree = 128;
-    p.intermediate_graph_degree = 256;
-    p.nn_descent_niter = 100;
-    p.fp16_graph = 0;
+    /* Spend the additional graph degree only on the 256-dimensional workload,
+     * where it recovers Recall while retaining a shorter NN-Descent run. */
+    p.graph_degree = 160;
+    p.intermediate_graph_degree = 192;
+    p.nn_descent_niter = 48;
+    p.fp16_graph = 1;
   }
   return p;
 }
@@ -213,7 +213,7 @@ int seekdb_cuvs_search(void* handle, const float* query, long nq, long topk,
 
   if (required_itopk < 512) { required_itopk = 512; }
   if (h->sp->itopk_size < required_itopk) { h->sp->itopk_size = required_itopk; }
-  h->sp->search_width = 4;
+  h->sp->search_width = 8;
   cuvsFilter filter;
   filter.type = NO_FILTER;
   filter.addr = (uintptr_t)0;

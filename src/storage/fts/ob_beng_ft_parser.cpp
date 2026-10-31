@@ -57,7 +57,6 @@ int ObBEngFTParser::get_next_token(
     word_len = token.len_;
     char_len = token.len_;
     word_freq = token_freq;
-    LOG_DEBUG("succeed to add word", K(ObString(word_len, word)), K(word_freq));
   }
   return ret;
 }

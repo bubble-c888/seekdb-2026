@@ -157,15 +157,14 @@ void ObTextDaaTIter::reset_direct_union_cursors()
   }
 }
 
-int ObTextDaaTIter::load_direct_union_cursor(DirectUnionCursor &cursor, const int64_t dim_idx,
-                                              const int64_t capacity)
+int ObTextDaaTIter::load_direct_union_cursor(DirectUnionCursor &cursor, const int64_t dim_idx)
 {
   int ret = OB_SUCCESS;
   cursor.pos_ = 0;
   cursor.count_ = 0;
   while (OB_SUCC(ret) && 0 == cursor.count_) {
     if (OB_FAIL(static_cast<ObTextRetrievalDaaTTokenIter *>(dim_iters_->at(dim_idx))
-                ->get_next_id_key_batch(cursor.keys_, cursor.count_, capacity))) {
+                ->get_next_id_key_batch(cursor.keys_, cursor.count_))) {
       if (OB_ITER_END == ret) {
         cursor.end_ = true;
         cursor.count_ = 0;
@@ -187,12 +186,9 @@ int ObTextDaaTIter::direct_union_next_rows(const int64_t capacity, int64_t &coun
   const bool has_limit = limit_param->is_valid();
   const int64_t should_match = static_cast<ObSRDaaTInnerProductRelevanceCollector *>(
       relevance_collector_)->minimum_should_match();
-  const int64_t fetch_capacity = has_limit
-      ? MIN(real_capacity, MAX(limit_param->limit_ - output_row_cnt_, 1L))
-      : real_capacity;
   for (int64_t i = 0; OB_SUCC(ret) && i < dim_cnt; ++i) {
     DirectUnionCursor &cursor = direct_union_cursors_[i];
-    if (!cursor.end_ && cursor.pos_ >= cursor.count_ && OB_FAIL(load_direct_union_cursor(cursor, i, fetch_capacity))) {
+    if (!cursor.end_ && cursor.pos_ >= cursor.count_ && OB_FAIL(load_direct_union_cursor(cursor, i))) {
     }
     if (OB_ITER_END == ret) {
       ret = OB_SUCCESS;
@@ -219,7 +215,7 @@ int ObTextDaaTIter::direct_union_next_rows(const int64_t capacity, int64_t &coun
         DirectUnionCursor &cursor = direct_union_cursors_[i];
         if (!cursor.end_ && cursor.keys_[cursor.pos_] == min_id) {
           ++matched_cnt;
-          if (++cursor.pos_ >= cursor.count_ && OB_FAIL(load_direct_union_cursor(cursor, i, fetch_capacity))) {
+          if (++cursor.pos_ >= cursor.count_ && OB_FAIL(load_direct_union_cursor(cursor, i))) {
             if (OB_ITER_END == ret) {
               ret = OB_SUCCESS;
             }

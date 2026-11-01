@@ -88,8 +88,7 @@ private:
   };
   int check_direct_union_mode();
   int direct_union_next_rows(const int64_t capacity, int64_t &count);
-  int load_direct_union_cursor(DirectUnionCursor &cursor, const int64_t dim_idx,
-                               const int64_t capacity);
+  int load_direct_union_cursor(DirectUnionCursor &cursor, const int64_t dim_idx);
   void reset_direct_union_cursors();
 protected:
   ObBM25ParamEstimator bm25_param_estimator_;

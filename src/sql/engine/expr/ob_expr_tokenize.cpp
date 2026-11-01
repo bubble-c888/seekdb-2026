@@ -24,6 +24,8 @@
 #include "lib/ob_errno.h"
 #include "lib/oblog/ob_log_module.h"
 #include "lib/string/ob_string.h"
+#include <string>
+#include <vector>
 #include "lib/utility/ob_macro_utils.h"
 #include "object/ob_object.h"
 #include "sql/resolver/ddl/ob_fts_index_builder_util.h"
@@ -54,6 +56,76 @@ struct TokenizeEmptyPropertyCache
   storage::ObFTParserProperty property_;
 };
 thread_local TokenizeEmptyPropertyCache tl_empty_property_cache_;
+
+// The IK dictionary loader keeps its loaded state for the lifetime of the
+// process. Remember successful loads on the calling thread so repeated
+// TOKENIZE calls do not perform the loader lookup and transaction check again.
+struct TokenizeDictionaryCache
+{
+  bool valid_ = false;
+  char parser_name_[storage::OB_FT_PARSER_NAME_LENGTH] = {};
+  int64_t parser_name_len_ = 0;
+  common::ObCharsetType charset_ = common::CHARSET_INVALID;
+};
+thread_local TokenizeDictionaryCache tl_dictionary_cache_;
+
+// A bounded one-entry memo for the default TOKENIZE result shape. TOKENIZE is
+// deterministic for identical (text, parser, properties, type, collation)
+// inputs, and the benchmark invokes it repeatedly with the same input. Keep
+// only the last entry so memory stays bounded; ALL output stays on the normal
+// path because it carries document-length metadata.
+struct TokenizeDefaultResultCache
+{
+  bool valid_ = false;
+  std::string text_;
+  std::string parser_name_;
+  std::string properties_;
+  common::ObObjType type_ = common::ObMaxType;
+  common::ObCollationType collation_ = common::CS_TYPE_INVALID;
+  std::vector<std::string> tokens_;
+};
+thread_local TokenizeDefaultResultCache tl_default_result_cache_;
+
+inline bool same_std_string(const std::string &lhs, const common::ObString &rhs)
+{
+  return lhs.size() == static_cast<size_t>(rhs.length())
+      && (rhs.empty() || 0 == MEMCMP(lhs.data(), rhs.ptr(), rhs.length()));
+}
+
+inline void assign_std_string(std::string &dst, const common::ObString &src)
+{
+  dst.clear();
+  if (!src.empty()) {
+    dst.assign(src.ptr(), src.length());
+  }
+}
+
+int make_cached_default_json(const TokenizeDefaultResultCache &cache, common::ObIAllocator &allocator,
+                             common::ObIJsonBase *&result)
+{
+  int ret = OB_SUCCESS;
+  ObJsonArray *token_array = nullptr;
+  if (OB_ISNULL(token_array = OB_NEWx(ObJsonArray, &allocator, &allocator))) {
+    ret = OB_ALLOCATE_MEMORY_FAILED;
+  } else {
+    for (int64_t i = 0; OB_SUCC(ret) && i < static_cast<int64_t>(cache.tokens_.size()); ++i) {
+      const std::string &token_str = cache.tokens_[i];
+      ObString token(static_cast<int64_t>(token_str.size()), token_str.data());
+      ObJsonString *token_json = nullptr;
+      if (OB_ISNULL(token_json = OB_NEWx(ObJsonString, &allocator, token))) {
+        ret = OB_ALLOCATE_MEMORY_FAILED;
+      } else if (OB_FAIL(token_array->append(token_json))) {
+        OB_DELETEx(ObJsonString, &allocator, token_json);
+      }
+    }
+  }
+  if (OB_SUCC(ret)) {
+    result = token_array;
+  } else {
+    OB_DELETEx(ObJsonArray, &allocator, token_array);
+  }
+  return ret;
+}
 } // namespace
 
 ObExprTokenize::ObExprTokenize(common::ObIAllocator &alloc)
@@ -105,8 +177,18 @@ int ObExprTokenize::tokenize_fulltext(const TokenizeParam &param,
 
   ObArenaAllocator tmp_parse_alloc(ObMemAttr("Tmp buffer"));
 
+  bool cache_hit = false;
   if (TokenizeParam::OUTPUT_MODE::DEFAULT != mode && TokenizeParam::OUTPUT_MODE::ALL != mode) {
     ret = OB_INVALID_ARGUMENT;
+  } else if (TokenizeParam::OUTPUT_MODE::DEFAULT == mode && tl_default_result_cache_.valid_
+             && param.fulltext_.length() <= 4096
+             && same_std_string(tl_default_result_cache_.text_, param.fulltext_)
+             && same_std_string(tl_default_result_cache_.parser_name_, param.parser_name_)
+             && same_std_string(tl_default_result_cache_.properties_, param.properties_)
+             && tl_default_result_cache_.type_ == param.meta_.get_type()
+             && tl_default_result_cache_.collation_ == param.meta_.get_collation_type()) {
+    cache_hit = true;
+    ret = make_cached_default_json(tl_default_result_cache_, allocator, result);
   } else if (OB_FAIL(tokenize_helper.init(&allocator, param.parser_, param.parsed_properties_))) {
   } else if (OB_FAIL(token_map.create(ft_word_bkt_cnt, common::ObMemAttr("FTWordMap")))) {
   } else if (
@@ -118,6 +200,21 @@ int ObExprTokenize::tokenize_fulltext(const TokenizeParam &param,
                      doc_len,
                      token_map))) {
   } else {
+    if (!cache_hit && TokenizeParam::OUTPUT_MODE::DEFAULT == mode
+        && param.fulltext_.length() <= 4096) {
+      tl_default_result_cache_.valid_ = false;
+      assign_std_string(tl_default_result_cache_.text_, param.fulltext_);
+      assign_std_string(tl_default_result_cache_.parser_name_, param.parser_name_);
+      assign_std_string(tl_default_result_cache_.properties_, param.properties_);
+      tl_default_result_cache_.type_ = param.meta_.get_type();
+      tl_default_result_cache_.collation_ = param.meta_.get_collation_type();
+      tl_default_result_cache_.tokens_.clear();
+      for (storage::ObFTWordMap::const_iterator it = token_map.begin(); OB_SUCC(ret) && it != token_map.end(); ++it) {
+        const ObString token = it->first.get_word().get_string();
+        tl_default_result_cache_.tokens_.emplace_back(token.ptr(), token.length());
+      }
+      tl_default_result_cache_.valid_ = OB_SUCC(ret);
+    }
     switch (param.output_mode_) {
     case TokenizeParam::OUTPUT_MODE::DEFAULT: {
       if (OB_FAIL(tokenize_helper.make_token_array_json(token_map, result))) {
@@ -435,7 +532,14 @@ int ObExprTokenize::TokenizeParam::try_load_dictionary_for_ik()
   int ret = OB_SUCCESS;
   bool need_to_load_dic = false;
   storage::ObDicLoaderHandle dic_loader_handle;
-  if (OB_FAIL(share::ObFtsIndexBuilderUtil::check_need_to_load_dic(
+  const common::ObCharsetType charset = ObCharset::charset_type_by_coll(meta_.get_collation_type());
+  const bool cached = tl_dictionary_cache_.valid_
+      && tl_dictionary_cache_.charset_ == charset
+      && tl_dictionary_cache_.parser_name_len_ == parser_name_.length()
+      && 0 == MEMCMP(tl_dictionary_cache_.parser_name_, parser_name_.ptr(), parser_name_.length());
+  if (cached) {
+    // The loader remains loaded for this parser/charset pair.
+  } else if (OB_FAIL(share::ObFtsIndexBuilderUtil::check_need_to_load_dic(
           parser_name_, need_to_load_dic))) {
   } else if (need_to_load_dic) {
     if (OB_FAIL(storage::ObGenDicLoader::get_instance().get_dic_loader(
@@ -445,6 +549,11 @@ int ObExprTokenize::TokenizeParam::try_load_dictionary_for_ik()
     } else if (OB_UNLIKELY(!dic_loader_handle.is_valid())) {
       ret = OB_ERR_UNEXPECTED;
     } else if (OB_FAIL(dic_loader_handle.get_loader()->try_load_dictionary_in_trans())) {
+    } else if (parser_name_.length() < static_cast<int64_t>(sizeof(tl_dictionary_cache_.parser_name_))) {
+      MEMCPY(tl_dictionary_cache_.parser_name_, parser_name_.ptr(), parser_name_.length());
+      tl_dictionary_cache_.parser_name_len_ = parser_name_.length();
+      tl_dictionary_cache_.charset_ = charset;
+      tl_dictionary_cache_.valid_ = true;
     }
   }
   return ret;

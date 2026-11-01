@@ -66,13 +66,13 @@ dataset. This is the SIFT-like path:
 - intermediate graph degree: 160;
 - NN-Descent iterations: 32;
 - graph construction precision: FP16;
-- search width: 8;
+- search width: 16;
 - search dataset and distances: FP32.
 
-Higher-dimensional inputs use a wider degree-160 graph with a degree-192
-intermediate graph, 48 NN-Descent iterations, FP16 graph construction, and
-width-8 FP32 search. This recovers Recall while keeping build and query work
-below the frozen V5 baseline.
+Higher-dimensional inputs use a degree-160 graph with a degree-160 intermediate
+graph, 40 NN-Descent iterations, FP16 graph construction, and width-16 FP32
+search. This recovers Recall while keeping build and query work below the frozen
+V5 baseline.
 The heuristic depends only on input size and dimension; it does not inspect
 dataset names or evaluation metadata.
 

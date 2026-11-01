@@ -9,7 +9,7 @@ baseline; local numbers are diagnostic only.
 | Input profile | Graph build | Search dataset | Graph degree | Intermediate degree | NN-Descent iterations |
 | --- | --- | --- | ---: | ---: | ---: |
 | `n >= 100000`, `dim <= 128` | FP16 NN-Descent | FP32 CAGRA | 128 | 160 | 32 |
-| larger-dimensional inputs | FP16 NN-Descent | FP32 CAGRA | 160 | 192 | 48 |
+| larger-dimensional inputs | FP16 NN-Descent | FP32 CAGRA | 160 | 160 | 40 |
 
 The final searchable graph always uses hipVS CAGRA search. FP16 is internal to
 graph construction only; IDs, persisted vectors, queries, and returned

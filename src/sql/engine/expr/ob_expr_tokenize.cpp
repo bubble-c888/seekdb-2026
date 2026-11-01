@@ -39,6 +39,23 @@ namespace oceanbase
 {
 namespace sql
 {
+namespace
+{
+// TOKENIZE is typically evaluated repeatedly with the same parser and no
+// properties. Keep the immutable parser/property pair thread-local so the
+// hot path does not parse and rebuild the same default JSON properties for
+// every row/call. The fallback path below remains unchanged for properties.
+struct TokenizeEmptyPropertyCache
+{
+  bool valid_ = false;
+  char parser_name_[storage::OB_FT_PARSER_NAME_LENGTH] = {};
+  int64_t parser_name_len_ = 0;
+  storage::ObFTParser parser_;
+  storage::ObFTParserProperty property_;
+};
+thread_local TokenizeEmptyPropertyCache tl_empty_property_cache_;
+} // namespace
+
 ObExprTokenize::ObExprTokenize(common::ObIAllocator &alloc)
     : ObStringExprOperator(alloc,
                            T_FUN_TOKENIZE,
@@ -376,8 +393,19 @@ int ObExprTokenize::TokenizeParam::reform_parser_properties(const ObString &prop
 {
   int ret = OB_SUCCESS;
   storage::ObFTParserJsonProps parser_properties;
+  const bool cache_default = properties.empty();
+  const bool cache_hit = cache_default
+      && tl_empty_property_cache_.valid_
+      && tl_empty_property_cache_.parser_name_len_ == parser_name_.length()
+      && 0 == MEMCMP(tl_empty_property_cache_.parser_name_, parser_name_.ptr(), parser_name_.length());
 
-  if (OB_FAIL(parser_.parse_from_str(parser_name_.ptr(), parser_name_.length()))) {
+  if (cache_hit) {
+    // The default parser properties are immutable. Reuse the parsed descriptor and
+    // property values on repeated TOKENIZE calls instead of rebuilding the JSON
+    // property object on every expression evaluation.
+    parser_ = tl_empty_property_cache_.parser_;
+    parsed_properties_ = tl_empty_property_cache_.property_;
+  } else if (OB_FAIL(parser_.parse_from_str(parser_name_.ptr(), parser_name_.length()))) {
   } else if (properties.empty()) {
     // No options to validate: use the same defaults without building JSON.
     ret = parsed_properties_.parse_for_parser_helper(parser_, parser_properties, true);
@@ -388,6 +416,15 @@ int ObExprTokenize::TokenizeParam::reform_parser_properties(const ObString &prop
                                                              ObCollationType::CS_TYPE_UTF8MB4_BIN,
                                                              true))) {
   } else if (OB_FAIL(parsed_properties_.parse_for_parser_helper(parser_, parser_properties))) {
+  }
+
+  if (OB_SUCC(ret) && cache_default && !cache_hit
+      && parser_name_.length() < static_cast<int64_t>(sizeof(tl_empty_property_cache_.parser_name_))) {
+    MEMCPY(tl_empty_property_cache_.parser_name_, parser_name_.ptr(), parser_name_.length());
+    tl_empty_property_cache_.parser_name_len_ = parser_name_.length();
+    tl_empty_property_cache_.parser_ = parser_;
+    tl_empty_property_cache_.property_ = parsed_properties_;
+    tl_empty_property_cache_.valid_ = true;
   }
 
   return ret;

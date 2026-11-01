@@ -157,7 +157,8 @@ public:
   virtual int get_curr_id(const ObDatum *&id_datum) const override;
   // Load the next posting-list batch as integer keys without touching the
   // row-wise cursor used by the scoring path.
-  int get_next_id_key_batch(const ObTextDocIdKey *&keys, int64_t &count);
+  int get_next_id_key_batch(const ObTextDocIdKey *&keys, int64_t &count,
+                            const int64_t capacity = 0);
 public:
   // Advance only within the owned doc-id buffer; loading another batch still
   // goes through get_next_row() so every storage and EOF check is preserved.

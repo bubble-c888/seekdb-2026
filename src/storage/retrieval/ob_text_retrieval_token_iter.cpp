@@ -542,7 +542,9 @@ int ObTextRetrievalDaaTTokenIter::get_next_batch(const int64_t capacity, int64_t
   return OB_NOT_IMPLEMENT;
 }
 
-int ObTextRetrievalDaaTTokenIter::get_next_id_key_batch(const ObTextDocIdKey *&keys, int64_t &count)
+int ObTextRetrievalDaaTTokenIter::get_next_id_key_batch(const ObTextDocIdKey *&keys,
+                                                        int64_t &count,
+                                                        const int64_t capacity)
 {
   int ret = OB_SUCCESS;
   count = 0;
@@ -555,7 +557,8 @@ int ObTextRetrievalDaaTTokenIter::get_next_id_key_batch(const ObTextDocIdKey *&k
   } else if (OB_ISNULL(id_keys_) && OB_ISNULL(id_keys_ = static_cast<ObTextDocIdKey *>(
                  allocator_->alloc(sizeof(ObTextDocIdKey) * max_batch_size_)))) {
     ret = OB_ALLOCATE_MEMORY_FAILED;
-  } else if (OB_FAIL(token_iter_->get_next_batch(max_batch_size_, count))) {
+  } else if (OB_FAIL(token_iter_->get_next_batch(
+                 capacity > 0 ? MIN(capacity, max_batch_size_) : max_batch_size_, count))) {
   } else {
     const ObDatumVector &doc_id_datum = inv_scan_domain_id_col_->locate_expr_datumvector(*eval_ctx_);
     const sql::ObBitVector *skip = token_iter_->get_skip();

@@ -39,8 +39,6 @@ public:
   static ObObjDatumMapType FTS_DOC_WORD_TYPES[4];
   static ObExprOperatorType FTS_INDEX_EXPR_TYPE[4];
   static ObExprOperatorType FTS_DOC_WORD_EXPR_TYPE[4];
-  // Keep the word-frequency map bounded as in the previous per-document path.
-  static constexpr int64_t FT_MAX_WORD_BUCKET = 997;
 
   ObFTIndexRowCache();
   ~ObFTIndexRowCache();
@@ -60,7 +58,6 @@ private:
   uint64_t row_idx_;
   bool is_fts_index_aux_;
   storage::ObFTParseHelper helper_;
-  storage::ObFTWordMap ft_word_map_;
   bool is_inited_;
 
   DISALLOW_COPY_AND_ASSIGN(ObFTIndexRowCache);
@@ -189,7 +186,6 @@ public:
                                          const ObDatum &doc_id_datum,
                                          const ObString &fulltext,
                                          const bool is_fts_index_aux,
-                                         storage::ObFTWordMap *ft_word_map,
                                          ObDomainIndexRow &word_rows);
   static int generate_multivalue_index_rows(
       ObIAllocator &allocator,

@@ -83,6 +83,7 @@ struct TokenizeDefaultResultCache
   common::ObObjType type_ = common::ObMaxType;
   common::ObCollationType collation_ = common::CS_TYPE_INVALID;
   std::vector<std::string> tokens_;
+  std::string raw_json_;
 };
 thread_local TokenizeDefaultResultCache tl_default_result_cache_;
 
@@ -149,16 +150,42 @@ int ObExprTokenize::eval_tokenize(const ObExpr &expr, ObEvalCtx &ctx, ObDatum &e
   ObIJsonBase *json_result = nullptr;
   TokenizeParam param(temp_allocator);
 
-  // check param num, which is checked in ObExprOperator::calc_result_typeN.
+  // check param num, which is checked in ObExprOperator::calc_resultTypeN.
   if (OB_UNLIKELY(expr.arg_cnt_ < 1 || expr.arg_cnt_ > 3)) {
     ret = OB_INVALID_ARGUMENT;
   } else if (OB_FAIL(parse_param(expr, ctx, temp_allocator, param))) {
+  } else if (TokenizeParam::OUTPUT_MODE::DEFAULT == param.output_mode_
+             && tl_default_result_cache_.valid_
+             && param.fulltext_.length() <= 4096
+             && same_std_string(tl_default_result_cache_.text_, param.fulltext_)
+             && same_std_string(tl_default_result_cache_.parser_name_, param.parser_name_)
+             && same_std_string(tl_default_result_cache_.properties_, param.properties_)
+             && tl_default_result_cache_.type_ == param.meta_.get_type()
+             && tl_default_result_cache_.collation_ == param.meta_.get_collation_type()) {
+    ObString raw_json(static_cast<int64_t>(tl_default_result_cache_.raw_json_.size()),
+                      tl_default_result_cache_.raw_json_.data());
+    ret = ObJsonExprHelper::pack_json_str_res(expr, ctx, expr_datum, raw_json);
   } else if (OB_FAIL(tokenize_fulltext(param, param.output_mode_, temp_allocator, json_result))) {
-  } else if (OB_FAIL(ObJsonExprHelper::pack_json_res(expr,
-                                                     ctx,
-                                                     temp_allocator,
-                                                     json_result,
-                                                     expr_datum))) {
+  } else {
+    if (TokenizeParam::OUTPUT_MODE::DEFAULT == param.output_mode_
+        && param.fulltext_.length() <= 4096) {
+      ObString raw_json;
+      if (OB_SUCC(share::ObJsonWrapper::get_raw_binary(json_result, raw_json, &temp_allocator))) {
+        assign_std_string(tl_default_result_cache_.text_, param.fulltext_);
+        assign_std_string(tl_default_result_cache_.parser_name_, param.parser_name_);
+        assign_std_string(tl_default_result_cache_.properties_, param.properties_);
+        tl_default_result_cache_.type_ = param.meta_.get_type();
+        tl_default_result_cache_.collation_ = param.meta_.get_collation_type();
+        assign_std_string(tl_default_result_cache_.raw_json_, raw_json);
+        tl_default_result_cache_.valid_ = true;
+      }
+    }
+    if (OB_FAIL(ObJsonExprHelper::pack_json_res(expr,
+                                                ctx,
+                                                temp_allocator,
+                                                json_result,
+                                                expr_datum))) {
+    }
   }
 
   return ret;

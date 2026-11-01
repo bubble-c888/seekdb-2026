@@ -25,6 +25,7 @@
 #include "data_plane/fts/ob_fts_parser_helper.h"
 #include "share/schema/ob_multi_version_schema_service.h"
 #include "share/schema/ob_schema_utils.h"
+#include "lib/cpu/ob_cpu_topology.h"
 
 namespace oceanbase
 {
@@ -1062,6 +1063,14 @@ int ObFtsIndexBuilderUtil::decide_parallelism(
     }
   }
   return ret;
+}
+
+int64_t ObFtsIndexBuilderUtil::get_default_auto_parallelism()
+{
+  // The effective cpu count of the instance: the cpu_count parameter when it is configured,
+  // otherwise the number of online cpus.
+  const int64_t cpu_count = common::get_cpu_count();
+  return MIN(static_cast<int64_t>(2), MAX(static_cast<int64_t>(1), cpu_count / 2));
 }
 
 int ObFtsIndexBuilderUtil::generate_word_segment_column(

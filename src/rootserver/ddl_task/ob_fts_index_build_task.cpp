@@ -726,7 +726,10 @@ int ObFtsIndexBuildTask::set_default_parallel_for_fts_aux(obcall::ObCreateIndexA
   // use the default automatic degree, so that the consumer side of one of them overlaps the
   // producer of the other without oversubscribing the px pool of a small box.
   // The rowkey-doc/doc-rowkey aux tables and non fulltext indexes are never changed here.
-  if (is_fts_task() && create_index_arg_.is_default_parallel_) {
+  if (is_fts_task() && create_index_arg_.is_default_parallel_
+      && create_index_arg_.index_columns_.count() > 1) {
+    // A one-column FTS build has substantially less column work and is
+    // dominated by the serial scan/sort; parallel aux tables regress it.
     arg.parallelism_ = ObFtsIndexBuilderUtil::get_default_auto_parallelism();
     LOG_INFO("set default parallel degree for fulltext aux table build",
              K(arg.index_type_), K(arg.parallelism_), K(create_index_arg_.parallelism_));

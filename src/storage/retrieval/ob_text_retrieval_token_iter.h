@@ -119,6 +119,29 @@ private:
   DISALLOW_COPY_AND_ASSIGN(ObTextRetrievalTokenIter);
 };
 
+// Order-preserving representation of a posting-list document id. Unsigned
+// integer ids use lo_; 16-byte binary ids (ObDocId) are split into two
+// big-endian halves so integer comparisons follow the index order.
+struct ObTextDocIdKey
+{
+  uint64_t hi_;
+  uint64_t lo_;
+  OB_INLINE bool operator<(const ObTextDocIdKey &other) const
+  {
+    return hi_ < other.hi_ || (hi_ == other.hi_ && lo_ < other.lo_);
+  }
+  OB_INLINE bool operator==(const ObTextDocIdKey &other) const
+  {
+    return hi_ == other.hi_ && lo_ == other.lo_;
+  }
+  static const int64_t BINARY_ID_LEN = 2 * sizeof(uint64_t);
+  static bool is_supported(const ObDatumMeta &meta)
+  {
+    return common::ObUInt64Type == meta.type_
+        || (common::ObVarcharType == meta.type_ && common::CS_TYPE_BINARY == meta.cs_type_);
+  }
+};
+
 class ObTextRetrievalDaaTTokenIter final : public ObISRDaaTDimIter
 {
 public:
@@ -132,6 +155,9 @@ public:
   virtual int advance_to(const ObDatum &id_datum) override;
   virtual int get_curr_score(double &score) const override;
   virtual int get_curr_id(const ObDatum *&id_datum) const override;
+  // Load the next posting-list batch as integer keys without touching the
+  // row-wise cursor used by the scoring path.
+  int get_next_id_key_batch(const ObTextDocIdKey *&keys, int64_t &count);
 public:
   // Advance only within the owned doc-id buffer; loading another batch still
   // goes through get_next_row() so every storage and EOF check is preserved.
@@ -165,6 +191,7 @@ private:
   int64_t count_;
   ObFixedArray<double, ObIAllocator> relevance_; // when ~ObFixedArray(), wikll destory itself
   ObFixedArray<ObDocIdExt, ObIAllocator> doc_id_;
+  ObTextDocIdKey *id_keys_;
   common::ObDatumCmpFuncType cmp_func_;
   bool is_inited_;
   DISALLOW_COPY_AND_ASSIGN(ObTextRetrievalDaaTTokenIter);

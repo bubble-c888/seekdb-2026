@@ -60,7 +60,12 @@ public:
       function_lookup_mode_(false),
       need_relevance_(true),
       union_cmp_func_(nullptr),
-      union_cmp_type_(UNION_ID_CMP_FUNC) {}
+      union_cmp_type_(UNION_ID_CMP_FUNC),
+      direct_union_mode_checked_(false),
+      direct_union_mode_(false),
+      direct_union_cursors_(nullptr),
+      direct_union_out_ids_(nullptr),
+      direct_union_out_bytes_(nullptr) {}
   virtual ~ObTextDaaTIter() { reset(); }
 
   int init(const ObTextDaaTParam &param);
@@ -74,6 +79,17 @@ private:
   // lists. Merge the doc ids of all dimensions directly, without scoring or merge heap.
   int union_next_rows(const int64_t capacity, int64_t &count);
   int compare_union_id(const ObDatum &l, const ObDatum &r, int &cmp_ret) const;
+  struct DirectUnionCursor
+  {
+    const ObTextDocIdKey *keys_;
+    int64_t count_;
+    int64_t pos_;
+    bool end_;
+  };
+  int check_direct_union_mode();
+  int direct_union_next_rows(const int64_t capacity, int64_t &count);
+  int load_direct_union_cursor(DirectUnionCursor &cursor, const int64_t dim_idx);
+  void reset_direct_union_cursors();
 protected:
   ObBM25ParamEstimator bm25_param_estimator_;
   sql::ObMatchAgainstMode mode_flag_;
@@ -83,6 +99,11 @@ protected:
   common::ObDatumCmpFuncType union_cmp_func_;
   enum UnionIdCmpType { UNION_ID_CMP_FUNC = 0, UNION_ID_CMP_INT, UNION_ID_CMP_UINT, UNION_ID_CMP_BINARY };
   UnionIdCmpType union_cmp_type_;
+  bool direct_union_mode_checked_;
+  bool direct_union_mode_;
+  DirectUnionCursor *direct_union_cursors_;
+  ObTextDocIdKey *direct_union_out_ids_;
+  char *direct_union_out_bytes_;
 private:
   DISALLOW_COPY_AND_ASSIGN(ObTextDaaTIter);
 };

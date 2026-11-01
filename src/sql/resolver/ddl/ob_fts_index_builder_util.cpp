@@ -1070,7 +1070,7 @@ int64_t ObFtsIndexBuilderUtil::get_default_auto_parallelism()
   // The effective cpu count of the instance: the cpu_count parameter when it is configured,
   // otherwise the number of online cpus.
   const int64_t cpu_count = common::get_cpu_count();
-  return MIN(static_cast<int64_t>(2), MAX(static_cast<int64_t>(1), cpu_count / 2));
+  return MAX(static_cast<int64_t>(1), cpu_count);
 }
 
 int ObFtsIndexBuilderUtil::generate_word_segment_column(

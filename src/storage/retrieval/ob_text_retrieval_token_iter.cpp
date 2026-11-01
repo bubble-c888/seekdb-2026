@@ -412,6 +412,7 @@ ObTextRetrievalDaaTTokenIter::ObTextRetrievalDaaTTokenIter()
     count_(0),
     relevance_(),
     doc_id_(),
+    id_keys_(nullptr),
     cmp_func_(nullptr),
     is_inited_(false)
 {
@@ -463,6 +464,7 @@ void ObTextRetrievalDaaTTokenIter::reset()
 {
   relevance_.reset();
   doc_id_.reset();
+  id_keys_ = nullptr;
   token_iter_->reset();
   cur_idx_ = -1;
   count_ = 0;
@@ -538,6 +540,53 @@ int ObTextRetrievalDaaTTokenIter::save_docids()
 int ObTextRetrievalDaaTTokenIter::get_next_batch(const int64_t capacity, int64_t &count)
 {
   return OB_NOT_IMPLEMENT;
+}
+
+int ObTextRetrievalDaaTTokenIter::get_next_id_key_batch(const ObTextDocIdKey *&keys, int64_t &count)
+{
+  int ret = OB_SUCCESS;
+  count = 0;
+  const bool is_uint_id = ObUInt64Type == inv_scan_domain_id_col_->datum_meta_.type_;
+  if (IS_NOT_INIT) {
+    ret = OB_NOT_INIT;
+  } else if (OB_UNLIKELY(!eval_ctx_->is_vectorized()
+                         || !ObTextDocIdKey::is_supported(inv_scan_domain_id_col_->datum_meta_))) {
+    ret = OB_NOT_SUPPORTED;
+  } else if (OB_ISNULL(id_keys_) && OB_ISNULL(id_keys_ = static_cast<ObTextDocIdKey *>(
+                 allocator_->alloc(sizeof(ObTextDocIdKey) * max_batch_size_)))) {
+    ret = OB_ALLOCATE_MEMORY_FAILED;
+  } else if (OB_FAIL(token_iter_->get_next_batch(max_batch_size_, count))) {
+  } else {
+    const ObDatumVector &doc_id_datum = inv_scan_domain_id_col_->locate_expr_datumvector(*eval_ctx_);
+    const sql::ObBitVector *skip = token_iter_->get_skip();
+    int64_t valid_cnt = 0;
+    for (int64_t i = 0; OB_SUCC(ret) && i < count; ++i) {
+      if (OB_UNLIKELY(nullptr != skip && skip->at(i))) {
+      } else if (is_uint_id) {
+        id_keys_[valid_cnt].hi_ = 0;
+        id_keys_[valid_cnt].lo_ = doc_id_datum.at(i)->get_uint64();
+        ++valid_cnt;
+      } else if (OB_UNLIKELY(ObTextDocIdKey::BINARY_ID_LEN != doc_id_datum.at(i)->len_)) {
+        ret = OB_NOT_SUPPORTED;
+        LOG_WARN("unexpected binary document id length", K(ret), K(doc_id_datum.at(i)->len_));
+      } else {
+        uint64_t hi = 0;
+        uint64_t lo = 0;
+        MEMCPY(&hi, doc_id_datum.at(i)->ptr_, sizeof(uint64_t));
+        MEMCPY(&lo, doc_id_datum.at(i)->ptr_ + sizeof(uint64_t), sizeof(uint64_t));
+#if __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+        hi = __builtin_bswap64(hi);
+        lo = __builtin_bswap64(lo);
+#endif
+        id_keys_[valid_cnt].hi_ = hi;
+        id_keys_[valid_cnt].lo_ = lo;
+        ++valid_cnt;
+      }
+    }
+    count = valid_cnt;
+    keys = id_keys_;
+  }
+  return ret;
 }
 
 int ObTextRetrievalDaaTTokenIter::advance_to(const ObDatum &id_datum)

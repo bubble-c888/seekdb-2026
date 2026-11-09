@@ -2,9 +2,19 @@
 """Local self-test harness for the MiniVectorDB public mysqltest cases.
 
 Every case in ``mysqltest/manifest.json`` is executed against a FRESH, EMPTY
-data directory: the database program is started, fed the statements of the
-``.test`` file one per line on stdin, and every response line is compared with
-the matching entry of the ``.result`` array.
+data directory: the database program is started, fed the items of the ``.test``
+file and every response line is compared with the matching entry of the
+``.result`` array.
+
+The ``.test`` files of the task package contain two kinds of items:
+
+* a SQL statement -- it produces exactly one response line and therefore
+  occupies exactly one position in the ``.result`` array;
+* a driver directive (``--restart``, ``--mode ann``, comments) -- it does not
+  produce a response and does not occupy an assertion position.
+
+``--restart`` closes stdin, waits for the program to exit and starts it again
+with the same data directory, exactly like the organiser describes it.
 
 Usage examples::
 
@@ -31,7 +41,7 @@ import tempfile
 import threading
 import time
 from pathlib import Path
-from typing import Any, List, Optional, Sequence
+from typing import Any, List, Optional, Sequence, Tuple
 
 _HERE = Path(__file__).resolve().parent
 _REPO_ROOT = _HERE.parent
@@ -44,6 +54,9 @@ DEFAULT_PROGRAM = "{} -m minivectordb --data-dir <datadir>".format(sys.executabl
 DEFAULT_TIMEOUT = 30.0
 SHUTDOWN_TIMEOUT = 15.0
 STDERR_TAIL_LINES = 40
+
+#: Directives that make the harness restart the program.
+RESTART_DIRECTIVES = ("restart", "reopen")
 
 
 # --------------------------------------------------------------------------
@@ -132,9 +145,25 @@ def load_cases(cases_dir: Path) -> List[Case]:
 
 
 def read_statements(test_file: Path) -> List[str]:
-    """Read the statements of a ``.test`` file: one statement per non-empty line."""
+    """Read the statements of a ``.test`` file: one item per non-empty line."""
     with test_file.open("r", encoding="utf-8") as handle:
         return [line.strip() for line in handle.read().splitlines() if line.strip()]
+
+
+def read_items(test_file: Path) -> List[Tuple[str, str]]:
+    """Read a ``.test`` file as a list of ``(kind, text)`` items.
+
+    ``kind`` is ``"sql"`` for a statement and ``"directive"`` for a driver
+    instruction such as ``--restart`` or ``--mode ann``.  Only the statements
+    occupy a position in the ``.result`` file.
+    """
+    items: List[Tuple[str, str]] = []
+    for line in read_statements(test_file):
+        if line.startswith("--"):
+            items.append(("directive", line))
+        else:
+            items.append(("sql", line))
+    return items
 
 
 def read_expectations(result_file: Path) -> List[dict]:
@@ -180,7 +209,7 @@ def _pump_stdout(stream, out_queue: "queue.Queue", errors: List[str]) -> None:
     """Forward stdout lines to a queue; push ``None`` on EOF."""
     try:
         for line in stream:
-            if "�" in line and not errors:
+            if "\ufffd" in line and not errors:
                 errors.append(
                     "the response stream contains bytes that are not valid UTF-8. "
                     "The database program must write UTF-8 encoded JSON on stdout."
@@ -201,15 +230,132 @@ def _pump_stderr(stream, sink: List[str]) -> None:
         pass
 
 
+class Program:
+    """One run of the database program together with its pipes."""
+
+    def __init__(self, command: Sequence[str], environment: dict, cwd: str):
+        self.command = list(command)
+        self.environment = environment
+        self.cwd = cwd
+        self.process: Optional[subprocess.Popen] = None
+        self.stdout_queue: "queue.Queue" = queue.Queue()
+        self.stderr_lines: List[str] = []
+        self.stdout_errors: List[str] = []
+        self._stdout_thread: Optional[threading.Thread] = None
+        self._stderr_thread: Optional[threading.Thread] = None
+
+    # -- lifecycle ------------------------------------------------------
+    def start(self) -> None:
+        self.process = subprocess.Popen(
+            self.command,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            bufsize=1,
+            cwd=self.cwd,
+            env=self.environment,
+        )
+        self.stdout_queue = queue.Queue()
+        self.stderr_lines = []
+        self.stdout_errors = []
+        self._stdout_thread = threading.Thread(
+            target=_pump_stdout,
+            args=(self.process.stdout, self.stdout_queue, self.stdout_errors),
+            daemon=True,
+        )
+        self._stderr_thread = threading.Thread(
+            target=_pump_stderr, args=(self.process.stderr, self.stderr_lines), daemon=True
+        )
+        self._stdout_thread.start()
+        self._stderr_thread.start()
+
+    def send(self, text: str) -> None:
+        assert self.process is not None
+        self.process.stdin.write(text + "\n")
+        self.process.stdin.flush()
+
+    def read_line(self, timeout: float) -> Optional[str]:
+        """Return the next response line, ``None`` on EOF and ``TIMEOUT`` on timeout."""
+        try:
+            return self.stdout_queue.get(timeout=timeout)
+        except queue.Empty:
+            return TIMEOUT
+
+    def close_stdin(self) -> None:
+        if self.process is None or self.process.stdin is None:
+            return
+        try:
+            if not self.process.stdin.closed:
+                self.process.stdin.close()
+        except Exception:  # pragma: no cover - defensive
+            pass
+
+    def wait(self, timeout: float) -> Optional[int]:
+        if self.process is None:
+            return None
+        try:
+            return self.process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            return None
+
+    def kill(self) -> None:
+        if self.process is None:
+            return
+        try:
+            self.process.kill()
+        except Exception:  # pragma: no cover - defensive
+            pass
+
+    def close_pipes(self) -> None:
+        if self.process is None:
+            return
+        for stream in (self.process.stdout, self.process.stderr):
+            try:
+                if stream is not None:
+                    stream.close()
+            except Exception:  # pragma: no cover - defensive
+                pass
+        for thread in (self._stdout_thread, self._stderr_thread):
+            if thread is not None:
+                thread.join(timeout=2.0)
+
+    def drain_extra_lines(self) -> List[str]:
+        """Return the response lines that no statement claimed."""
+        extra: List[str] = []
+        while True:
+            try:
+                line = self.stdout_queue.get_nowait()
+            except queue.Empty:
+                break
+            if line is None:
+                continue
+            if line.strip():
+                extra.append(line.strip())
+        return extra
+
+
+class _Timeout:
+    """Marker for a read that timed out."""
+
+    def __repr__(self) -> str:  # pragma: no cover - debugging helper
+        return "<timeout>"
+
+
+TIMEOUT = _Timeout()
+
+
 def run_case(case: Case, program: str, parent_dir: Path, timeout: float,
              verbose: bool) -> CaseResult:
     """Run one case against a fresh database and compare every response."""
     result = CaseResult(case.case_id)
     started = time.monotonic()
 
-    statements = read_statements(case.test_file)
+    items = read_items(case.test_file)
     expectations = read_expectations(case.result_file)
-    result.total = len(statements)
+    result.total = sum(1 for kind, _ in items if kind == "sql")
 
     data_dir = parent_dir / case.case_id
     if data_dir.exists():
@@ -226,25 +372,16 @@ def run_case(case: Case, program: str, parent_dir: Path, timeout: float,
     if verbose:
         print("+ {}".format(format_command(command)), flush=True)
 
+    environment = os.environ.copy()
+    # The response protocol is UTF-8; make sure the child does not fall back
+    # to the console code page of the current locale (Windows).
+    environment["PYTHONIOENCODING"] = "utf-8"
+    environment["PYTHONUTF8"] = "1"
+    environment["PYTHONUNBUFFERED"] = "1"
+
+    runner = Program(command, environment, str(_REPO_ROOT))
     try:
-        environment = os.environ.copy()
-        # The response protocol is UTF-8; make sure the child does not fall back
-        # to the console code page of the current locale (Windows).
-        environment["PYTHONIOENCODING"] = "utf-8"
-        environment["PYTHONUTF8"] = "1"
-        environment["PYTHONUNBUFFERED"] = "1"
-        process = subprocess.Popen(
-            command,
-            stdin=subprocess.PIPE,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            bufsize=1,
-            cwd=str(_REPO_ROOT),
-            env=environment,
-        )
+        runner.start()
     except OSError as exc:
         result.failures.append(
             Failure("cannot start the database program: {}".format(exc))
@@ -252,205 +389,226 @@ def run_case(case: Case, program: str, parent_dir: Path, timeout: float,
         result.duration = time.monotonic() - started
         return result
 
-    stdout_queue: "queue.Queue" = queue.Queue()
-    stderr_lines: List[str] = []
-    stdout_errors: List[str] = []
-    stdout_thread = threading.Thread(
-        target=_pump_stdout,
-        args=(process.stdout, stdout_queue, stdout_errors),
-        daemon=True,
-    )
-    stderr_thread = threading.Thread(
-        target=_pump_stderr, args=(process.stderr, stderr_lines), daemon=True
-    )
-    stdout_thread.start()
-    stderr_thread.start()
-
-    killed = False
-
-    def kill_process() -> None:
-        nonlocal killed
-        if killed:
-            return
-        killed = True
-        try:
-            process.kill()
-        except Exception:  # pragma: no cover - defensive
-            pass
+    statement_index = 0
+    stopped = False
 
     try:
-        for index, sql in enumerate(statements):
-            expectation = expectations[index] if index < len(expectations) else None
+        for kind, text in items:
+            if kind == "directive":
+                name = text[2:].strip().split(" ")[0].split("=")[0].lower()
+                if name in RESTART_DIRECTIVES:
+                    # Normal shutdown, wait for the exit, start again with the
+                    # same data directory.
+                    runner.close_stdin()
+                    code = runner.wait(SHUTDOWN_TIMEOUT)
+                    if code is None:
+                        runner.kill()
+                        result.failures.append(
+                            Failure(
+                                "the database program did not exit within {:.1f}s "
+                                "of the restart directive".format(SHUTDOWN_TIMEOUT)
+                            )
+                        )
+                        stopped = True
+                        break
+                    if code != 0:
+                        result.failures.append(
+                            Failure(
+                                "the database program exited with code {} at the "
+                                "restart directive".format(code)
+                            )
+                        )
+                    runner.close_pipes()
+                    runner = Program(command, environment, str(_REPO_ROOT))
+                    try:
+                        runner.start()
+                    except OSError as exc:
+                        result.failures.append(
+                            Failure("cannot restart the database program: {}".format(exc))
+                        )
+                        stopped = True
+                        break
+                    if verbose:
+                        print("--- restart", flush=True)
+                    continue
+                # Every other directive is forwarded to the program; it does
+                # not answer a directive.
+                try:
+                    runner.send(text)
+                except (BrokenPipeError, OSError) as exc:
+                    result.failures.append(
+                        Failure(
+                            "the database program stopped accepting input at the "
+                            "directive {!r}: {}".format(text, exc)
+                        )
+                    )
+                    stopped = True
+                    break
+                continue
+
+            expectation = (
+                expectations[statement_index]
+                if statement_index < len(expectations)
+                else None
+            )
             try:
-                process.stdin.write(sql + "\n")
-                process.stdin.flush()
+                runner.send(text)
             except (BrokenPipeError, OSError) as exc:
-                exit_code = process.poll()
+                exit_code = runner.process.poll()
                 result.failures.append(
                     Failure(
                         "the database program stopped accepting input after {} statement(s) "
-                        "(exit code {}): {}".format(index, exit_code, exc),
-                        statement_index=index,
-                        sql=sql,
+                        "(exit code {}): {}".format(statement_index, exit_code, exc),
+                        statement_index=statement_index,
+                        sql=text,
                     )
                 )
+                stopped = True
                 break
 
-            try:
-                line = stdout_queue.get(timeout=timeout)
-            except queue.Empty:
-                kill_process()
+            line = runner.read_line(timeout)
+            if line is TIMEOUT:
+                runner.kill()
                 result.failures.append(
                     Failure(
                         "timeout after {:.1f}s waiting for the response to statement #{}".format(
-                            timeout, index + 1
+                            timeout, statement_index + 1
                         ),
-                        statement_index=index,
-                        sql=sql,
+                        statement_index=statement_index,
+                        sql=text,
                     )
                 )
+                stopped = True
                 break
 
             if line is None:
-                exit_code = process.poll()
+                exit_code = runner.process.poll()
                 if exit_code is None:
-                    try:
-                        exit_code = process.wait(timeout=SHUTDOWN_TIMEOUT)
-                    except subprocess.TimeoutExpired:
-                        kill_process()
-                        exit_code = "unknown (killed)"
+                    exit_code = runner.wait(SHUTDOWN_TIMEOUT)
                 result.failures.append(
                     Failure(
                         "the database program exited (exit code {}) without answering "
-                        "statement #{}".format(exit_code, index + 1),
-                        statement_index=index,
-                        sql=sql,
+                        "statement #{}".format(exit_code, statement_index + 1),
+                        statement_index=statement_index,
+                        sql=text,
                     )
                 )
+                stopped = True
                 break
 
-            text = line.strip()
-            if not text:
+            stripped = line.strip()
+            if not stripped:
                 result.failures.append(
                     Failure(
                         "the database program produced an empty response line for statement #{}".format(
-                            index + 1
+                            statement_index + 1
                         ),
-                        statement_index=index,
-                        sql=sql,
+                        statement_index=statement_index,
+                        sql=text,
                     )
                 )
+                statement_index += 1
                 continue
 
             try:
-                actual = json.loads(text)
+                actual = json.loads(stripped)
             except ValueError as exc:
                 result.failures.append(
                     Failure(
                         "the response to statement #{} is not valid JSON ({}): {}".format(
-                            index + 1, exc, text
+                            statement_index + 1, exc, stripped
                         ),
-                        statement_index=index,
-                        sql=sql,
-                        actual=text,
+                        statement_index=statement_index,
+                        sql=text,
+                        actual=stripped,
                     )
                 )
+                statement_index += 1
                 continue
 
             if expectation is None:
                 result.failures.append(
                     Failure(
-                        "the result file has no expectation for statement #{}".format(index + 1),
-                        statement_index=index,
-                        sql=sql,
+                        "the result file has no expectation for statement #{}".format(
+                            statement_index + 1
+                        ),
+                        statement_index=statement_index,
+                        sql=text,
                         actual=actual,
                     )
                 )
+                statement_index += 1
                 continue
 
             problems = compare_result(expectation, actual)
             result.checked += 1
             if verbose:
-                print("--- statement #{}: {}".format(index + 1, sql), flush=True)
+                print("--- statement #{}: {}".format(statement_index + 1, text), flush=True)
                 print("expected: {}".format(format_value(expectation)), flush=True)
                 print("actual:   {}".format(format_value(actual)), flush=True)
             if problems:
                 result.failures.append(
                     Failure(
-                        "statement #{} does not match the expectation".format(index + 1),
-                        statement_index=index,
-                        sql=sql,
+                        "statement #{} does not match the expectation".format(
+                            statement_index + 1
+                        ),
+                        statement_index=statement_index,
+                        sql=text,
                         expected=expectation,
                         actual=actual,
                         problems=problems,
                     )
                 )
+            statement_index += 1
 
         # Every statement must have produced exactly one response line.
-        if len(statements) > len(expectations):
-            for index in range(len(expectations), len(statements)):
+        if statement_index > len(expectations):
+            for index in range(len(expectations), statement_index):
                 result.failures.append(
                     Failure(
                         "the result file has no expectation for statement #{}".format(index + 1),
                         statement_index=index,
-                        sql=statements[index],
                     )
                 )
 
-        # Look for responses that were never claimed by a statement.  The check
-        # runs again after the program exited, because the response lines can
-        # only be complete once stdout has been closed.
-        for error in stdout_errors:
+        for error in runner.stdout_errors:
             result.failures.append(Failure(error))
 
     finally:
-        try:
-            if process.stdin and not process.stdin.closed:
-                process.stdin.close()
-        except Exception:  # pragma: no cover - defensive
-            pass
-        try:
-            exit_code = process.wait(timeout=SHUTDOWN_TIMEOUT)
-        except subprocess.TimeoutExpired:
-            kill_process()
-            try:
-                process.wait(timeout=SHUTDOWN_TIMEOUT)
-            except subprocess.TimeoutExpired:  # pragma: no cover - defensive
-                exit_code = None
-            result.failures.append(
-                Failure(
-                    "the database program did not exit within {:.1f}s after stdin was closed".format(
-                        SHUTDOWN_TIMEOUT
+        if not stopped:
+            runner.close_stdin()
+            exit_code = runner.wait(SHUTDOWN_TIMEOUT)
+            if exit_code is None:
+                runner.kill()
+                try:
+                    runner.wait(SHUTDOWN_TIMEOUT)
+                except Exception:  # pragma: no cover - defensive
+                    pass
+                result.failures.append(
+                    Failure(
+                        "the database program did not exit within {:.1f}s after stdin was closed".format(
+                            SHUTDOWN_TIMEOUT
+                        )
                     )
                 )
-            )
-        else:
-            if exit_code != 0:
+            elif exit_code != 0:
                 result.failures.append(
                     Failure("the database program exited with code {}".format(exit_code))
                 )
-        try:
-            process.stdout.close()
-            process.stderr.close()
-        except Exception:  # pragma: no cover - defensive
-            pass
-        stderr_thread.join(timeout=2.0)
-        stdout_thread.join(timeout=2.0)
+        else:
+            runner.kill()
+            runner.wait(SHUTDOWN_TIMEOUT)
+
+        runner.close_pipes()
 
         # Any response line that was not claimed by a statement is a protocol
         # violation (the program must answer exactly one line per statement).
-        while True:
-            try:
-                extra = stdout_queue.get_nowait()
-            except queue.Empty:
-                break
-            if extra is not None and extra.strip():
-                result.failures.append(
-                    Failure("unexpected extra output line: {}".format(extra.strip()))
-                )
-                break
+        for extra in runner.drain_extra_lines():
+            result.failures.append(
+                Failure("unexpected extra output line: {}".format(extra))
+            )
 
-    result.stderr = stderr_tail(stderr_lines)
+    result.stderr = stderr_tail(runner.stderr_lines)
     result.duration = time.monotonic() - started
     result.passed = not result.failures
     return result

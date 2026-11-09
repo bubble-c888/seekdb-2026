@@ -99,13 +99,13 @@ class HarnessSmokeTest(unittest.TestCase):
             ),
         )
         self.assertIn("[PASS] sql_crud", completed.stdout)
-        self.assertIn("statements=9/9", completed.stdout)
+        self.assertIn("statements=7/7", completed.stdout)
         self.assertIn("summary: 1/1 cases passed", completed.stdout)
 
     def test_mismatching_response_is_reported(self):
         broken = json.loads(json.dumps(self.expected))
-        # same number of rows, but the last row carries another category
-        broken[2]["rows"][2] = [3, "甲", "三"]
+        # same number of rows, but the row carries another content
+        broken[2]["rows"][0] = [1, "修改"]
         program = _write_fake_program(self.work, broken)
         completed = self._run_harness(
             '"{}" "{}"'.format(sys.executable, program)
@@ -113,7 +113,7 @@ class HarnessSmokeTest(unittest.TestCase):
         self.assertEqual(completed.returncode, 1, msg=completed.stdout)
         self.assertIn("[FAIL] sql_crud", completed.stdout)
         self.assertIn("statement #3", completed.stdout)
-        self.assertIn("row 2 mismatch", completed.stdout)
+        self.assertIn("row 0 mismatch", completed.stdout)
         self.assertIn("column 1 mismatch", completed.stdout)
         self.assertIn("expected:", completed.stdout)
         self.assertIn("actual:", completed.stdout)

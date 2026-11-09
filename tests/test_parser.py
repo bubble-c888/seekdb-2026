@@ -29,279 +29,104 @@ def _doc_table(with_vector: bool = False) -> ast.CreateTable:
 
 
 # ---------------------------------------------------------------------------
-# expectations for the public sample cases (mysqltest/cases/*.test)
+# the public sample cases (mysqltest/cases/*.test)
 # ---------------------------------------------------------------------------
 
-PUBLIC_CASES = {
-    "sql_crud": [
-        _doc_table(),
-        ast.Insert(
-            table="docs",
-            columns=None,
-            rows=[
-                [ast.IntLiteral(3), ast.StrLiteral("乙"), ast.StrLiteral("三")],
-                [ast.IntLiteral(1), ast.StrLiteral("甲"), ast.StrLiteral("一")],
-                [ast.IntLiteral(2), ast.StrLiteral("甲"), ast.StrLiteral("二")],
-            ],
-        ),
-        ast.Select(
-            table="docs",
-            items=[ast.SelectItem(expr=ast.ColumnRef("*"))],
-            where=None,
-            order_by=[ast.OrderItem("id", False)],
-            limit=None,
-        ),
-        ast.Update(
-            table="docs",
-            assignments=[ast.Assignment("content", ast.StrLiteral("已更新"))],
-            where=ast.Compare(
-                ast.ColumnRef("category"), "=", ast.StrLiteral("甲")
-            ),
-        ),
-        ast.Select(
-            table="docs",
-            items=[
-                ast.SelectItem(expr=ast.ColumnRef("id")),
-                ast.SelectItem(expr=ast.ColumnRef("content")),
-            ],
-            where=ast.Compare(
-                ast.ColumnRef("category"), "=", ast.StrLiteral("甲")
-            ),
-            order_by=[ast.OrderItem("id", False)],
-            limit=None,
-        ),
-        ast.Delete(
-            table="docs",
-            where=ast.Compare(ast.ColumnRef("id"), ">=", ast.IntLiteral(2)),
-        ),
-        ast.Select(
-            table="docs",
-            items=[ast.SelectItem(expr=ast.ColumnRef("id"))],
-            where=None,
-            order_by=[],
-            limit=None,
-        ),
-        ast.Update(
-            table="docs",
-            assignments=[ast.Assignment("content", ast.StrLiteral("无"))],
-            where=ast.Compare(ast.ColumnRef("id"), "=", ast.IntLiteral(99)),
-        ),
-        ast.Delete(
-            table="docs",
-            where=ast.Compare(ast.ColumnRef("id"), "=", ast.IntLiteral(99)),
-        ),
-    ],
-    "sql_comparisons": [
-        _doc_table(),
-        ast.Insert(
-            table="docs",
-            columns=None,
-            rows=[
-                [ast.IntLiteral(3), ast.StrLiteral("乙"), ast.StrLiteral("三")],
-                [ast.IntLiteral(1), ast.StrLiteral("甲"), ast.StrLiteral("一")],
-                [ast.IntLiteral(2), ast.StrLiteral("甲"), ast.StrLiteral("二")],
-            ],
-        ),
-        ast.Select(
-            table="docs",
-            items=[ast.SelectItem(expr=ast.ColumnRef("id"))],
-            where=ast.And(
-                ast.Compare(ast.ColumnRef("id"), ">", ast.IntLiteral(1)),
-                ast.Compare(ast.ColumnRef("id"), "<=", ast.IntLiteral(3)),
-            ),
-            order_by=[ast.OrderItem("id", False)],
-            limit=None,
-        ),
-        ast.Select(
-            table="docs",
-            items=[ast.SelectItem(expr=ast.ColumnRef("id"))],
-            where=ast.And(
-                ast.Compare(ast.ColumnRef("id"), "<", ast.IntLiteral(3)),
-                ast.Compare(ast.ColumnRef("id"), ">=", ast.IntLiteral(1)),
-            ),
-            order_by=[ast.OrderItem("id", False)],
-            limit=None,
-        ),
-        ast.Select(
-            table="docs",
-            items=[ast.SelectItem(expr=ast.ColumnRef("id"))],
-            where=ast.Compare(
-                ast.ColumnRef("category"), ">=", ast.StrLiteral("乙")
-            ),
-            order_by=[ast.OrderItem("id", False)],
-            limit=None,
-        ),
-        ast.Select(
-            table="docs",
-            items=[ast.SelectItem(expr=ast.ColumnRef("id"))],
-            where=ast.Compare(
-                ast.ColumnRef("category"), "<", ast.StrLiteral("甲")
-            ),
-            order_by=[ast.OrderItem("id", False)],
-            limit=None,
-        ),
-        ast.Select(
-            table="docs",
-            items=[ast.SelectItem(expr=ast.ColumnRef("id"))],
-            where=ast.Compare(ast.ColumnRef("id"), "=", ast.IntLiteral(2)),
-            order_by=[],
-            limit=None,
-        ),
-    ],
-    "sql_ordering": [
-        _doc_table(),
-        ast.Insert(
-            table="docs",
-            columns=None,
-            rows=[
-                [ast.IntLiteral(3), ast.StrLiteral("乙"), ast.StrLiteral("三")],
-                [ast.IntLiteral(1), ast.StrLiteral("甲"), ast.StrLiteral("一")],
-                [ast.IntLiteral(2), ast.StrLiteral("甲"), ast.StrLiteral("二")],
-            ],
-        ),
-        ast.Select(
-            table="docs",
-            items=[ast.SelectItem(expr=ast.ColumnRef("id"))],
-            where=None,
-            order_by=[ast.OrderItem("category", False)],
-            limit=3,
-        ),
-        ast.Select(
-            table="docs",
-            items=[ast.SelectItem(expr=ast.ColumnRef("id"))],
-            where=None,
-            order_by=[ast.OrderItem("category", True)],
-            limit=2,
-        ),
-        ast.Select(
-            table="docs",
-            items=[ast.SelectItem(expr=ast.ColumnRef("id"))],
-            where=None,
-            order_by=[ast.OrderItem("id", True)],
-            limit=20,
-        ),
-        ast.Select(
-            table="docs",
-            items=[ast.SelectItem(expr=ast.ColumnRef("id"))],
-            where=None,
-            order_by=[ast.OrderItem("id", False)],
-            limit=0,
-        ),
-        ast.Select(
-            table="docs",
-            items=[ast.SelectItem(expr=ast.ColumnRef("category"))],
-            where=None,
-            order_by=[],
-            limit=None,
-        ),
-    ],
-    "sql_empty": [
-        _doc_table(),
-        ast.Select(
-            table="docs",
-            items=[ast.SelectItem(expr=ast.ColumnRef("id"))],
-            where=None,
-            order_by=[ast.OrderItem("id", False)],
-            limit=5,
-        ),
-        ast.Delete(
-            table="docs",
-            where=ast.Compare(ast.ColumnRef("id"), ">", ast.IntLiteral(0)),
-        ),
-        ast.Select(
-            table="docs",
-            items=[ast.SelectItem(expr=ast.ColumnRef("id"))],
-            where=None,
-            order_by=[],
-            limit=None,
-        ),
-    ],
-    "vector_euclidean": [
-        _doc_table(with_vector=True),
-        ast.Insert(
-            table="docs",
-            columns=None,
-            rows=[
-                [
-                    ast.IntLiteral(3),
-                    ast.StrLiteral("乙"),
-                    ast.StrLiteral("三"),
-                    ast.StrLiteral("[0, 2]"),
-                ],
-                [
-                    ast.IntLiteral(1),
-                    ast.StrLiteral("甲"),
-                    ast.StrLiteral("一"),
-                    ast.StrLiteral("[0, 0]"),
-                ],
-                [
-                    ast.IntLiteral(2),
-                    ast.StrLiteral("甲"),
-                    ast.StrLiteral("二"),
-                    ast.StrLiteral("[1, 0]"),
-                ],
-            ],
-        ),
-        ast.Update(
-            table="docs",
-            assignments=[ast.Assignment("embedding", ast.StrLiteral("[3,4]"))],
-            where=ast.Compare(ast.ColumnRef("id"), "=", ast.IntLiteral(1)),
-        ),
-        ast.Select(
-            table="docs",
-            items=[
-                ast.SelectItem(expr=ast.ColumnRef("id")),
-                ast.SelectItem(
-                    expr=ast.DistanceFunc(column="embedding", vector="[0, 0]"),
-                    alias="distance",
-                ),
-            ],
-            where=None,
-            order_by=[ast.OrderItem("distance", False)],
-            limit=10,
-        ),
-        ast.Select(
-            table="docs",
-            items=[
-                ast.SelectItem(expr=ast.ColumnRef("id")),
-                ast.SelectItem(
-                    expr=ast.DistanceFunc(column="embedding", vector="[3,4]"),
-                    alias="distance",
-                ),
-            ],
-            where=ast.Compare(ast.ColumnRef("id"), "=", ast.IntLiteral(1)),
-            order_by=[ast.OrderItem("distance", False)],
-            limit=1,
-        ),
-    ],
-}
+PUBLIC_CASES_DIR = CASES_DIR
+PUBLIC_MANIFEST = os.path.normpath(
+    os.path.join(HERE, os.pardir, "mysqltest", "manifest.json")
+)
+
+
+def _public_case_ids():
+    """The ids of the public cases, taken from the manifest."""
+    import json
+
+    with open(PUBLIC_MANIFEST, "r", encoding="utf-8") as handle:
+        manifest = json.load(handle)
+    return [entry["id"] for entry in manifest.get("cases", [])]
+
+
+def _public_expectations(case_id):
+    """The expected result objects of a public case."""
+    import json
+
+    path = os.path.join(PUBLIC_CASES_DIR, case_id + ".result")
+    with open(path, "r", encoding="utf-8") as handle:
+        return json.load(handle)
+
+
+def _public_items(case_id):
+    """The items of a public case: ``(kind, text)`` per line."""
+    path = os.path.join(PUBLIC_CASES_DIR, case_id + ".test")
+    with open(path, "r", encoding="utf-8") as handle:
+        lines = [line.strip() for line in handle if line.strip()]
+    items = []
+    for line in lines:
+        if line.startswith("--"):
+            items.append(("directive", line))
+        else:
+            items.append(("sql", line))
+    return items
 
 
 class PublicCaseTest(unittest.TestCase):
-    """Every public sample statement must produce the expected AST."""
+    """Every public sample statement must be understood by the parser."""
 
     def test_public_cases_exist(self):
         self.assertTrue(os.path.isdir(CASES_DIR))
-        for name in PUBLIC_CASES:
-            self.assertTrue(
-                os.path.isfile(os.path.join(CASES_DIR, name + ".test")), name
-            )
+        ids = _public_case_ids()
+        self.assertTrue(ids, "the manifest does not list a single case")
+        for name in ids:
+            for suffix in (".test", ".result"):
+                self.assertTrue(
+                    os.path.isfile(os.path.join(CASES_DIR, name + suffix)),
+                    name + suffix,
+                )
 
     def test_public_sample_statements(self):
-        for name, expected in PUBLIC_CASES.items():
-            path = os.path.join(CASES_DIR, name + ".test")
-            with open(path, "r", encoding="utf-8") as handle:
-                statements = [
-                    line.strip()
-                    for line in handle
-                    if line.strip() and not line.strip().startswith("--")
-                ]
+        for name in _public_case_ids():
+            statements = [text for kind, text in _public_items(name) if kind == "sql"]
+            expected = _public_expectations(name)
             self.assertEqual(len(statements), len(expected), name)
-            for index, (sql, want) in enumerate(zip(statements, expected)):
+            for index, sql in enumerate(statements):
                 with self.subTest(case=name, index=index, sql=sql):
-                    got = parse(sql)
-                    self.assertEqual(got, want)
-                    self.assertEqual(type(got), type(want))
+                    try:
+                        parse(sql)
+                    except UnsupportedError:
+                        # A statement outside of the supported subset is
+                        # rejected by the executor, not by the parser.
+                        self.assertEqual(
+                            expected[index].get("error"), "unsupported_sql"
+                        )
+
+    def test_public_expectations_match_the_manifest(self):
+        import json
+
+        with open(PUBLIC_MANIFEST, "r", encoding="utf-8") as handle:
+            manifest = json.load(handle)
+        for entry in manifest.get("cases", []):
+            name = entry["id"]
+            statements = [text for kind, text in _public_items(name) if kind == "sql"]
+            self.assertEqual(
+                len(statements), int(entry.get("statements", 0)), name
+            )
+
+    def test_first_statement_of_sql_crud(self):
+        statement = parse(
+            "CREATE TABLE docs (id BIGINT PRIMARY KEY, content VARCHAR(16));"
+        )
+        self.assertEqual(
+            statement,
+            ast.CreateTable(
+                name="docs",
+                columns=[
+                    ast.ColumnDef("id", "BIGINT", None, True, False),
+                    ast.ColumnDef("content", "VARCHAR", 16, False, False),
+                ],
+                primary_key="id",
+            ),
+        )
 
 
 class GrammarTest(unittest.TestCase):

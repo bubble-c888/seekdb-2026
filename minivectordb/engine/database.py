@@ -159,6 +159,7 @@ class Database:
                     clusters=int(payload.get("clusters", 0)),
                     nprobe=int(payload.get("nprobe", 1)),
                     lists=payload.get("lists", {}),
+                    radii=payload.get("radii", {}),
                 )
                 self.indexes[(name, index_name.lower())] = index
 

@@ -620,7 +620,13 @@ class Parser:
         return None
 
     def _parse_order_item(self) -> ast.OrderItem:
-        name = self._expect_name("a column name")
+        tok = self.peek()
+        if tok.kind == "word" and self.peek(1).is_op("("):
+            # ORDER BY L2_DISTANCE(embedding, '[0, 0]') -- the distance is
+            # ordered by without being part of the select list.
+            name = self._parse_order_function()
+        else:
+            name = self._expect_name("a column name")
         desc = False
         if self.at_word("DESC"):
             self.advance()
@@ -628,6 +634,29 @@ class Parser:
         elif self.at_word("ASC"):
             self.advance()
         return ast.OrderItem(name=name, desc=desc)
+
+    def _parse_order_function(self) -> str:
+        """Parse a distance function in an ORDER BY clause.
+
+        The raw text of the call is kept, the executor resolves it against the
+        columns of the table.
+        """
+        start = self.peek().pos
+        tok = self.advance()  # function name
+        fname = tok.upper()
+        if fname != "L2_DISTANCE":
+            _unsupported(f"the function {fname}() cannot be used in ORDER BY")
+        self._expect_op("(")
+        self._expect_name("a column name")
+        self._expect_op(",")
+        vtok = self.peek()
+        if vtok.kind != "string":
+            if vtok.kind == "eof":
+                self._missing("a vector literal")
+            self._err("L2_DISTANCE expects a quoted vector literal", vtok)
+        self.advance()
+        close = self._expect_op(")")
+        return self.sql[start:close.pos + len(close.text)]
 
     # ------------------------------------------------------------------
     # expressions

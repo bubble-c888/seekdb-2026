@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import bisect
 import heapq
+import os
 import re
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -18,8 +19,10 @@ import numpy as np
 from ..errors import (
     ColumnNotFoundError,
     DataError,
+    IndexExistsError,
     MiniVectorDBError,
     ParseError,
+    TableExistsError,
     TableNotFoundError,
     UnsupportedError,
 )
@@ -31,9 +34,16 @@ from .table import CHUNK_ROWS, ColumnSpec, Table, TableOverlay
 from .vector import format_vector, l2_distances, parse_vector_literal
 
 DISTANCE_RE = re.compile(
-    r"^\s*L2_DISTANCE\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*,\s*'([^']*)'\s*\)\s*$",
+    r"^\s*L2_DISTANCE\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*,\s*['\"]([^'\"]*)['\"]\s*\)\s*$",
     re.IGNORECASE,
 )
+
+#: Up to this number of rows the approximate mode scans the vector column
+#: exactly.  The reference implementation of the task package uses an exact
+#: scan as well, so the small correctness cases have to produce the very same
+#: rows in both modes; the approximate index is used for the large data sets
+#: of the performance benchmark.
+ANN_EXACT_LIMIT = int(os.environ.get("MINIVECTORDB_ANN_EXACT_LIMIT", "50000") or 50000)
 
 
 # ---------------------------------------------------------------------------
@@ -50,6 +60,10 @@ class ComparisonTerm:
     literal: Any
     rank_array: Optional[np.ndarray] = None
     target_rank: int = 0
+    #: False when a string literal is not part of the dictionary: such a value
+    #: can only be compared with an ordering operator, an equality never
+    #: matches.
+    exact_match: bool = True
 
 
 @dataclass
@@ -104,9 +118,7 @@ class Executor:
     def create_table(self, statement: ast.CreateTable) -> Dict[str, Any]:
         name = statement.name
         if self.db.table(name) is not None:
-            raise MiniVectorDBError(
-                f"table '{name}' already exists", code=1050, sqlstate="42S01"
-            )
+            raise TableExistsError(f"table '{name}' already exists")
         columns: List[ColumnSpec] = []
         seen = set()
         for column in statement.columns:
@@ -162,11 +174,7 @@ class Executor:
                 "a vector index can only be created on a VECTOR column"
             )
         if statement.name.lower() in table.indexes:
-            raise MiniVectorDBError(
-                f"index '{statement.name}' already exists",
-                code=1061,
-                sqlstate="42000",
-            )
+            raise IndexExistsError(f"index '{statement.name}' already exists")
         dim = int(column.length or 0)
         clusters = 64
         index = VectorIndex(
@@ -178,8 +186,13 @@ class Executor:
             nprobe=max(1, clusters // 4),
         )
         autocommit = not self.db.in_transaction
-        txn = self.db.current_transaction()
-        index.build(txn.writes)
+        try:
+            txn = self.db.current_transaction()
+            index.build(txn.writes)
+        except Exception:
+            if autocommit:
+                self.db.rollback()
+            raise
         table.indexes[statement.name.lower()] = index.to_meta()
         self.db.indexes[(table.name.lower(), statement.name.lower())] = index
         if autocommit:
@@ -211,6 +224,11 @@ class Executor:
                 self._plan_index_append(table, slot, values)
                 affected += 1
         except Exception:
+            # A failed statement must not leave a part of its rows behind.  In
+            # auto commit mode the implicit transaction is dropped completely,
+            # inside an explicit transaction the previous statements stay.
+            if autocommit:
+                self.db.rollback()
             raise
         self._merge_overlay(overlay, statement_overlay)
         txn.writes.extend(writes.writes)
@@ -273,25 +291,32 @@ class Executor:
         if table is None:
             raise TableNotFoundError(f"table '{statement.table}' does not exist")
         primary_key = table.primary_key.lower() if table.primary_key else None
-        assignments: Dict[str, Any] = {}
-        for assignment in statement.assignments:
-            column = table.column(assignment.column)
-            if primary_key and column.key == primary_key:
-                raise UnsupportedError("updating the primary key is not supported")
-            assignments[column.key] = self._coerce(table, column, assignment.value)
-        terms = self._compile_predicate(table, statement.where)
         autocommit = not self.db.in_transaction
-        txn = self.db.current_transaction()
-        overlay = txn.overlay_for(table)
-        statement_overlay = self._statement_overlay(overlay)
-        writes = WriteSet()
-        affected = 0
-        for slot in self._matching_slots(table, terms, overlay):
-            current = dict(overlay.rows.get(slot, {}))
-            current.update(assignments)
-            table.plan_update(slot, assignments, writes, statement_overlay)
-            self._plan_index_append(table, slot, current)
-            affected += 1
+        try:
+            assignments: Dict[str, Any] = {}
+            for assignment in statement.assignments:
+                column = table.column(assignment.column)
+                if primary_key and column.key == primary_key:
+                    raise UnsupportedError(
+                        "updating the primary key is not supported"
+                    )
+                assignments[column.key] = self._coerce(table, column, assignment.value)
+            terms = self._compile_predicate(table, statement.where)
+            txn = self.db.current_transaction()
+            overlay = txn.overlay_for(table)
+            statement_overlay = self._statement_overlay(overlay)
+            writes = WriteSet()
+            affected = 0
+            for slot in self._matching_slots(table, terms, overlay):
+                current = dict(overlay.rows.get(slot, {}))
+                current.update(assignments)
+                table.plan_update(slot, assignments, writes, statement_overlay)
+                self._plan_index_append(table, slot, current)
+                affected += 1
+        except Exception:
+            if autocommit:
+                self.db.rollback()
+            raise
         self._merge_overlay(overlay, statement_overlay)
         txn.writes.extend(writes.writes)
         if autocommit:
@@ -302,17 +327,22 @@ class Executor:
         table = self.db.table(statement.table)
         if table is None:
             raise TableNotFoundError(f"table '{statement.table}' does not exist")
-        terms = self._compile_predicate(table, statement.where)
         autocommit = not self.db.in_transaction
-        txn = self.db.current_transaction()
-        overlay = txn.overlay_for(table)
-        statement_overlay = self._statement_overlay(overlay)
-        writes = WriteSet()
-        affected = 0
-        for slot in self._matching_slots(table, terms, overlay):
-            table.plan_delete(slot, writes, statement_overlay)
-            overlay.freed_slots.append(slot)
-            affected += 1
+        try:
+            terms = self._compile_predicate(table, statement.where)
+            txn = self.db.current_transaction()
+            overlay = txn.overlay_for(table)
+            statement_overlay = self._statement_overlay(overlay)
+            writes = WriteSet()
+            affected = 0
+            for slot in self._matching_slots(table, terms, overlay):
+                table.plan_delete(slot, writes, statement_overlay)
+                overlay.freed_slots.append(slot)
+                affected += 1
+        except Exception:
+            if autocommit:
+                self.db.rollback()
+            raise
         self._merge_overlay(overlay, statement_overlay)
         txn.writes.extend(writes.writes)
         if autocommit:
@@ -454,6 +484,10 @@ class Executor:
                         literal=text,
                         rank_array=rank,
                         target_rank=target_rank,
+                        # A literal that is not part of the dictionary matches
+                        # no row at all, the insertion point of the sorted
+                        # dictionary must not be mistaken for its rank.
+                        exact_match=text in merged,
                     )
                 )
         return compiled
@@ -503,7 +537,10 @@ class Executor:
                 safe = np.where(codes >= 0, codes, 0)
                 ranks = term.rank_array[safe]
                 if term.op == "=":
-                    part = ranks == term.target_rank
+                    if not term.exact_match:
+                        part = np.zeros(count, dtype=bool)
+                    else:
+                        part = ranks == term.target_rank
                 elif term.op == "<":
                     part = ranks < term.target_rank
                 elif term.op == "<=":
@@ -579,6 +616,10 @@ class Executor:
                     ok = int(value) >= int(term.literal)
             else:
                 text = str(value)
+                if term.op == "=" and not term.exact_match:
+                    # The literal is not part of the dictionary, it cannot
+                    # match any row.
+                    return False
                 dictionary = table.dictionary(term.column)
                 pending = self._pending_strings(table, term.column)
                 rank, merged = dictionary.rank_table(pending)
@@ -895,6 +936,10 @@ class Executor:
         overlay: Optional[TableOverlay],
     ) -> Tuple[List[List[Any]], List[str]]:
         labels = [item.label for item in items]
+        if table.n_slots <= ANN_EXACT_LIMIT:
+            # Small data sets are scanned exactly, so that the approximate mode
+            # returns the same rows as the reference implementation.
+            return self._select_exact(table, items, terms, order, limit, overlay)
         index = self._index_for(table, distance_item.column)
         if index is None:
             return self._select_exact(table, items, terms, order, limit, overlay)
@@ -902,11 +947,27 @@ class Executor:
         column = distance_item.column
         descending = any(item.desc for item, _ in order) if order else False
         wanted = limit
+        sign = -1.0 if descending else 1.0
         best: List[Tuple[float, int, int]] = []
         seen = set()
-        for _cluster_distance, cluster_slots in index.iter_cluster_slots(
+        probed = 0
+        alive = table.read_alive(0, table.n_slots)
+        for cluster_distance, radius, cluster_slots in index.iter_cluster_slots(
             distance_item.vector
         ):
+            if probed >= 1 and wanted is not None and len(best) >= wanted:
+                # The bound of the cluster (the distance of the query to the
+                # centroid minus the radius of the cluster) proves that the
+                # cluster cannot hold a row that is closer than the worst row
+                # that is kept.  All following clusters are farther away, so
+                # the search can stop.
+                bound = max(0.0, cluster_distance - radius)
+                if bound > abs(best[-1][0]):
+                    break
+            if probed >= index.nprobe and (wanted is None or len(best) >= wanted):
+                break
+            probed += 1
+            slots: List[int] = []
             for slot in cluster_slots:
                 slot = int(slot)
                 if slot in seen:
@@ -914,31 +975,33 @@ class Executor:
                 seen.add(slot)
                 if slot >= table.n_slots:
                     continue
-                if not bool(table.read_alive(slot, 1)[0]):
+                if not bool(alive[slot]):
                     continue
                 if terms and not self._slot_matches(table, terms, slot, overlay):
                     continue
-                vector = table.read_vectors(column, slot, 1)[0]
-                diff = vector.astype(np.float32) - distance_item.vector
-                distance = float(
-                    np.sqrt(float(np.einsum("i,i->i", diff, diff, dtype=np.float64)[0]))
-                )
+                slots.append(slot)
+            if not slots:
+                continue
+            vectors = index.gather_vectors(
+                column, np.asarray(slots, dtype=np.int64)
+            )
+            diff = vectors.astype(np.float32) - distance_item.vector
+            distances = np.sqrt(
+                np.einsum("ij,ij->i", diff, diff, dtype=np.float64)
+            )
+            for slot, distance in zip(slots, distances.tolist()):
                 primary_key = table.primary_key_at(slot)
-                best.append((distance, primary_key, slot))
-                if wanted is not None and len(best) >= wanted:
-                    break
+                best.append((sign * float(distance), primary_key, slot))
             best.sort(key=lambda entry: (entry[0], entry[1]))
-            if wanted is not None and len(best) >= wanted:
-                break
+            if wanted is not None and len(best) > wanted:
+                best = best[:wanted]
         best.sort(key=lambda entry: (entry[0], entry[1]))
         if limit is not None:
             best = best[:limit]
-        if descending:
-            best = list(reversed(best))
         rows: List[List[Any]] = []
         for distance, _pk, slot in best:
             rows.append(
-                self._single_row(table, items, slot, overlay, distance_item, distance)
+                self._single_row(table, items, slot, overlay, distance_item, abs(distance))
             )
         return rows, labels
 

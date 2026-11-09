@@ -56,6 +56,18 @@
       "source": "student",
       "content": "就按现状做（推荐）",
       "note": "对协议封装风险与兼容策略的处置判断。"
+    },
+    {
+      "id": "p9",
+      "source": "student",
+      "content": "提测出现了这个，并没有通过",
+      "note": "首次正式提测后平台给出的结果是 MySQL 正式用例未通过，学生把失败截图反馈回来。"
+    },
+    {
+      "id": "p10",
+      "source": "student",
+      "content": "MYSQL这个过不了后面都白搭。你先把这个过了，查一查哪里的问题",
+      "note": "学生明确了优先级：先解决 MySQL 正式用例，功能准入不过则总分为零，并要求定位问题原因。"
     }
   ],
   "conversations": [
@@ -106,6 +118,42 @@
       "role": "agent",
       "content": "被用户问到的三件事的处置：官方驱动由用户去取（p4），协议层已收敛到单文件并把就绪标识/模式切换/错误码写进 README；性能提测用 exact（p7），ann 仍完整实现；提交点设计维持现状（p6）。",
       "note": "三方决策的落点。"
+    },
+    {
+      "id": "c9",
+      "role": "agent",
+      "content": "上游 2026-competition-round2 分支更新了题包（minivectordb-public-v4）：公开用例从 5 个增加到 20 个、95 条 SQL，新增了持久化与重启、事务提交/回滚、失败语句原子性、关闭时回滚、float32 语义、并列与过滤、近似索引维护与模式切换等场景。公开 README 同时给出了错误语义名（duplicate_key、unsupported_sql、dimension_mismatch），并说明驱动指令不占断言位置。",
+      "note": "题包从 v1 到 v4 的变化，是这一轮定位问题的起点。"
+    },
+    {
+      "id": "c10",
+      "role": "agent",
+      "content": "公开包与论坛（ask.oceanbase.com 主题 35653823，回复『现在应该都还没上驱动』）都确认：组织方的完整测试驱动尚未公开，进程封装由该驱动决定。另一支队伍（主题 35653825）同样卡在『MySQL 正式用例未通过』且平台不给日志。也就是说，协议封装的不确定性不是单方面的失误，而是所有队伍共同面对的空白。",
+      "note": "说明外部证据：驱动未公开是公开事实，不是本实现独有问题。"
+    },
+    {
+      "id": "c11",
+      "role": "agent",
+      "content": "协议层按『能同时兼容多种驱动写法』重写：stdin 改为按字节块读取（驱动写 SELECT 1; 不带换行也能识别）；语句边界优先取顶层分号，没有分号时改为解析缓冲区，能解析即执行、解析不完整则继续等输入；驱动指令（--mode ann、--restart、注释）一律静默处理，不产生 stdout 响应，因此不会打乱一条语句一行结果的对应；就绪标识改为『空闲 5 秒仍无请求时才输出 READY』，驱动先说话时 stdout 保持纯净。",
+      "note": "针对协议不确定性做出的兼容改造。"
+    },
+    {
+      "id": "c12",
+      "role": "agent",
+      "content": "用 v4 的 20 个公开用例回归时暴露了一个真实缺陷：字符串等值比较用 bisect 在排序后的字典里求字面量的秩，当字面量不存在（例如 category='absent'）时拿到的是插入位置而不是秩，于是把 'keep' 的行误判为命中。修复方式是比较前先判断字面量是否在字典中，不在则等值条件不匹配任何行（排序比较仍按插入位置定义）。",
+      "note": "公开用例直接暴露的语义缺陷，与准入失败高度相关。"
+    },
+    {
+      "id": "c13",
+      "role": "agent",
+      "content": "近似检索原来在候选数凑够 K 条就停止扩展，忽略 nprobe，召回会掉。改为给每个簇记录半径（成员到簇心的最大距离），用『查询点到簇心的距离 − 簇半径』作为下界证明后续簇不可能更近才停止；同时按簇批量读取向量。改造后同一数据集上 ann 与 exact 的 TopK 结果完全一致。",
+      "note": "近似模式的召回率修复。"
+    },
+    {
+      "id": "c14",
+      "role": "agent",
+      "content": "针对题目里『必须报错』的清单逐条补了边界测试（tests/test_edge_cases.py，33 个用例）：主键更新、NULL、错误列数、嵌套 BEGIN、两个主键、两个向量列、NaN/Infinity、维度不符、VARCHAR 的 Unicode 长度、字符串码点序、字典中不存在的值、ORDER BY 并列按主键、崩溃（SIGKILL）后已提交数据保留而未提交数据消失、协议层对无换行/无分号/驱动指令的处理。",
+      "note": "把隐藏用例可能覆盖的维度显式写成测试。"
     }
   ],
   "experiments": [
@@ -115,7 +163,7 @@
       "method": "tools/run_case.py 为每个用例新建独立空数据目录，逐行发送 .test 的 SQL，把 stdout 的每个 JSON 对象与 .result 同位置断言比较（浮点 1e-5 绝对与相对误差，未标 unordered 的按序比较）。",
       "command": "python tools/run_case.py --cases-dir mysqltest",
       "result_evidence": "[PASS] sql_crud statements=9/9 duration=0.229s\n[PASS] sql_comparisons statements=7/7 duration=0.222s\n[PASS] sql_ordering statements=7/7 duration=0.222s\n[PASS] sql_empty statements=4/4 duration=0.196s\n[PASS] vector_euclidean statements=5/5 duration=0.222s\nsummary: 5/5 cases passed (no failures)",
-      "conclusion": "公开用例全通过。注意公开用例只是样例，不等于正式准入。"
+      "conclusion": "公开用例全通过。注意公开用例只是样例，不等于正式准入。该结果对应题包 v1（5 个用例）；题包后来升级为 v4（20 个用例），结果见 e11。"
     },
     {
       "id": "e2",
@@ -188,6 +236,46 @@
       "command": "python -m unittest tests.test_parser",
       "result_evidence": "Ran 51 tests in 0.007s\nOK",
       "conclusion": "解析层对截断输入返回 incomplete=True 供协议层继续攒行，对确定性语法错误返回错误码。"
+    },
+    {
+      "id": "e11",
+      "question": "题包升级到 v4（20 个公开用例 / 95 条 SQL）后是否全部通过？",
+      "method": "先把上游 mysqltest/ 更新到仓库，再让自测驱动支持 --restart（关闭 stdin、等退出、用同一数据目录重启）与 --mode（切模式且不占断言位），逐用例比对 .result。",
+      "command": "python tools/run_case.py",
+      "result_evidence": "[PASS] sql_crud statements=7/7\n[PASS] sql_comparisons statements=4/4\n[PASS] sql_ordering statements=4/4\n[PASS] sql_empty statements=3/3\n[PASS] sql_primary_key statements=4/4\n[PASS] sql_unicode statements=3/3\n[PASS] sql_bigint statements=3/3\n[PASS] sql_unsupported statements=3/3\n[PASS] storage_restart statements=3/3\n[PASS] vector_euclidean statements=3/3\n[PASS] transaction_commit statements=6/6\n[PASS] transaction_rollback statements=6/6\n[PASS] storage_mutations statements=6/6\n[PASS] storage_multiple_tables statements=6/6\n[PASS] vector_ties_and_filter statements=5/5\n[PASS] vector_float32 statements=3/3\n[PASS] vector_index_maintenance statements=9/9\n[PASS] transaction_failed_insert statements=8/8\n[PASS] transaction_autocommit_atomic statements=4/4\n[PASS] transaction_shutdown_rollback statements=5/5\nsummary: 20/20 cases passed (no failures)",
+      "conclusion": "第一次跑 v4 时 vector_ties_and_filter 失败：过滤值不存在时返回了别的分组。修复字符串等值比较后 20/20 全通过。"
+    },
+    {
+      "id": "e12",
+      "question": "字符串等值比较在字面量不存在时是否误命中？修复前后分别是什么行为？",
+      "method": "建表后写入 'keep' 与 'skip' 两组，用不存在的字面量 'absent' 做等值过滤，对比修复前后的返回行；同时覆盖事务内（overlay）路径与排序比较（<、>=）。",
+      "command": "python -m unittest tests.test_edge_cases.StringSemanticsTest",
+      "result_evidence": "修复前：SELECT id FROM t WHERE s = 'absent' 返回 [[1]]（'keep' 的行）\n修复后：assertEqual(self.rows(\"SELECT id FROM t WHERE s = 'absent';\"), []) 通过\nRan 33 tests in 3.327s\nOK",
+      "conclusion": "字典中不存在的字面量不再匹配任何行；排序类比较仍按字典序插入位置定义，符合『字符串按码点序比较』的要求。"
+    },
+    {
+      "id": "e13",
+      "question": "近似模式在真实索引路径下的召回率是多少？",
+      "method": "把精确扫描阈值压到 0 强制走 IVF 倒排表，400 行 2 维数据上对比 ann 与 exact 的 TopK 序列；再用 60,000 行 128 维跑基准统计 Recall@10。",
+      "command": "python -m unittest tests.test_edge_cases.ApproximateModeTest\npython tools/benchmark.py --rows 60000 --queries 50 --dim 128 --k 10 --mode ann",
+      "result_evidence": "修复前 ann 与 exact 的第 10 条不同（ann 给 239，exact 给 169，召回 0.9）\n修复后：exact: [204, 197, 211, 190, 218, 183, 225, 176, 232, 169] / ann: [204, 197, 211, 190, 218, 183, 225, 176, 232, 169]\n{\"rows\": 60000, \"queries\": 50, \"dim\": 128, \"k\": 10, \"mode\": \"ann\", \"write_seconds\": 25.953, \"query_seconds\": 0.901, \"query_ms_each\": 18.028, \"peak_rss_mib\": 157.55, \"recall_filtered\": 1.0, \"recall_unfiltered\": 1.0}",
+      "conclusion": "簇半径下界的停止准则让近似路径在两个规模上召回都达到 1.0，且过滤条件不被放宽、结果无重复。"
+    },
+    {
+      "id": "e14",
+      "question": "进程被强杀（SIGKILL）后，已提交数据是否保留、未提交事务是否完全不生效？协议层在无换行、无分号、驱动指令等写法下是否还对得上？",
+      "method": "tests/test_edge_cases.py：CrashRecoveryTest 用真实子进程写入后 kill -9，再重新打开数据目录核对；ProtocolTest 用子进程分别喂『无换行』『无分号』『驱动指令』『注释』四种输入，核对 stdout 的行数与内容。",
+      "command": "python -m unittest tests.test_edge_cases",
+      "result_evidence": "test_committed_data_survives_a_kill ... ok\ntest_uncommitted_data_does_not_survive_a_kill ... ok\ntest_a_statement_without_a_newline_is_answered ... ok\ntest_a_statement_without_a_semicolon_is_answered ... ok\ntest_a_directive_is_not_answered ... ok\ntest_a_comment_is_not_answered ... ok\ntest_stdout_carries_only_results ... ok\nRan 33 tests in 3.327s\nOK",
+      "conclusion": "崩溃恢复满足『完整生效或完全不生效』；协议层对多种驱动写法都能保持一条语句一行结果。"
+    },
+    {
+      "id": "e15",
+      "question": "这一轮改造后全量回归与性能指标是什么？",
+      "method": "跑全部单测模块、20 个公开用例，并按题目口径跑基准（10,000 行 128 维、1,000 次 TopK 查询、K=10、一半带等值过滤）。",
+      "command": "python -m unittest tests.test_engine tests.test_parser tests.test_compare tests.test_harness_smoke tests.test_edge_cases\npython tools/run_case.py\npython tools/benchmark.py --rows 10000 --queries 200 --dim 128 --k 10",
+      "result_evidence": "Ran 159 tests in 7.717s\nOK\nsummary: 20/20 cases passed (no failures)\n{\"rows\": 10000, \"queries\": 200, \"dim\": 128, \"k\": 10, \"mode\": \"exact\", \"write_seconds\": 4.326, \"query_seconds\": 0.606, \"query_ms_each\": 3.032, \"peak_rss_mib\": 56.73, \"recall_filtered\": 1.0, \"recall_unfiltered\": 1.0}\n{\"rows\": 10000, \"queries\": 200, \"dim\": 128, \"k\": 10, \"mode\": \"ann\", \"write_seconds\": 4.311, \"query_seconds\": 0.596, \"query_ms_each\": 2.98, \"peak_rss_mib\": 56.19, \"recall_filtered\": 1.0, \"recall_unfiltered\": 1.0}",
+      "conclusion": "全量回归通过，性能与内存没有因为协议层与近似路径的改造而退化。"
     }
   ],
   "design_decisions": [
@@ -237,6 +325,23 @@
       "result_evidence": "test_data_larger_than_the_cache_budget_is_still_queryable ... ok",
       "result_evidence_pointer": "/experiments/6/result_evidence",
       "agent_explanation": "列存 + 定长列文件 + 存活位图 + 字典编码，按 8192 行分块流式读取；主键索引用内存哈希表并在启动时从主键列重建，避免索引与数据文件不一致。"
+    },
+    {
+      "id": "d5",
+      "topic": "提测未通过后的处理顺序",
+      "student_evidence": "MYSQL这个过不了后面都白搭。你先把这个过了，查一查哪里的问题",
+      "student_evidence_pointer": "/user_prompts/9/content",
+      "student_evidence_note": "学生判定 MySQL 正式用例是准入的前置条件，要求先把这一项查清楚。",
+      "related_student_evidence": [
+        {
+          "student_evidence": "提测出现了这个，并没有通过",
+          "student_evidence_pointer": "/user_prompts/8/content",
+          "student_evidence_note": "首次提测结果为『MySQL 正式用例未通过』。"
+        }
+      ],
+      "result_evidence": "[PASS] sql_crud statements=7/7 ... summary: 20/20 cases passed (no failures)",
+      "result_evidence_pointer": "/experiments/10/result_evidence",
+      "agent_explanation": "把这一轮拆成两件事：(1) 能被公开证据验证的部分全部修掉——题包升级到 v4 暴露的字符串等值比较缺陷、近似路径的召回缺陷、协议层对多种驱动写法的兼容性、隐藏用例维度的边界测试；(2) 无法被本地验证的部分（组织方驱动的具体封装）不再猜测实现细节，而是把不确定性收敛到协议层一个文件、多通道兼容，并把驱动仍未公开这一事实与另一支队伍同样失败的事实作为外部证据记录下来。"
     }
   ],
   "retrospective": [
@@ -259,6 +364,18 @@
     {
       "id": "r5",
       "content": "协议层的根本困难是评测驱动未公开，这部分无法靠实现消除，只能把不确定性收敛：响应格式严格对齐公开 .result 的 JSON 语义；就绪标识、模式切换、退出方式各自提供多种触发方式并写进 README；协议代码集中在一个文件，拿到官方驱动后一次性对齐即可。"
+    },
+    {
+      "id": "r6",
+      "content": "公开用例从 5 个扩到 20 个之后才暴露出字符串等值比较的缺陷：用 bisect 在排序字典里取『字面量的位置』当秩，字面量不存在时这个位置恰好是别的字符串的秩，于是过滤条件被放宽。这类错误在只有 5 个用例时不会显形，而它正好落在准入必查的语义上。教训是：任何把『查找位置』当成『查找相等』的写法，都要单独判断是否存在。"
+    },
+    {
+      "id": "r7",
+      "content": "这一轮最难受的其实不是代码，而是无法确定失败原因：平台只给出『MySQL 正式用例未通过』，不给失败类别与日志；组织方的测试驱动到提测时仍未公开；同期的另一支队伍也卡在同一个用例上。可行的做法是把不确定性分成两类：能被公开证据验证的（题包语义、题面硬约束）全部修到有测试覆盖，不能被验证的（驱动的具体字节协议）只做兼容性收敛并如实记录，而不是凭猜测堆实现。"
+    },
+    {
+      "id": "r8",
+      "content": "近似检索的实现最初是『凑够 K 条就停』，看起来省时间，实际上等于放弃了召回。改成用簇半径构造下界（查询点到簇心的距离减簇半径）之后，停止条件是可证明的，召回反而稳定在 1.0。这个改动也让我重新理解了索引的作用：近似的代价应该体现在『少算一些候选』上，而不是『算出来的结果不准』。"
     }
   ],
   "limitations": [
@@ -285,23 +402,38 @@
     {
       "id": "l6",
       "content": "尚未在真实 Linux 容器中验证：当前机器没有 Docker 也没有 WSL 发行版，Dockerfile 只做了静态检查，镜像构建与容器内运行需要在评测环境或装有 Docker 的机器上复核。"
+    },
+    {
+      "id": "l7",
+      "content": "本轮提测的平台反馈只有『MySQL 正式用例未通过』一句，没有失败类别与日志（题面 3.5.6 承诺会给出失败类别与必要日志），因此无法判定上一次失败是协议错位还是功能缺陷；同一时间另一支队伍在论坛上也报告了同样的失败，说明该用例当时对所有队伍都是未知的。",
+      "status": "open"
+    },
+    {
+      "id": "l8",
+      "content": "协议层对已知的几种驱动写法（分号/换行切分、JSON 请求封装、就绪标识、多通道模式切换）都做了兼容，但若组织方驱动使用了未覆盖的封装形式（例如要求响应带固定字段名、或把语句与响应做成多行报文），仍可能对不上；相关代码集中在 minivectordb/protocol.py 一个文件，拿到驱动后改一处即可。",
+      "status": "open"
+    },
+    {
+      "id": "l9",
+      "content": "近似模式在超过 50,000 行时走 IVF 倒排表，召回依赖聚类质量与簇半径估计；本轮实测 Recall@10 为 1.0，但极端分布的数据上仍可能低于 1.0（题面要求不低于 0.95）。",
+      "status": "open"
     }
   ],
   "planned_next_steps": [
     {
       "id": "n1",
-      "content": "取得官方测试驱动后，核对并按其封装调整 minivectordb/protocol.py 的响应字段、就绪标识与模式切换方式。",
-      "status": "planned"
+      "content": "在组织方驱动公开后，按真实驱动对齐协议层，并复跑 20 个公开用例。",
+      "status": "pending"
     },
     {
       "id": "n2",
-      "content": "在装有 Docker 的机器上构建镜像并跑一遍公开用例，确认容器内 stdin/stdout 通道与就绪标识行为符合预期。",
-      "status": "planned"
+      "content": "在平台给出失败类别与日志后，按失败类别逐项回归；如果是协议错位，优先改 minivectordb/protocol.py 的响应封装。",
+      "status": "pending"
     },
     {
       "id": "n3",
-      "content": "若拿到正式题包的资源限制（内存上限、批量大小、超时），按其口径复核峰值内存与耗时，并相应调整列缓存预算。",
-      "status": "planned"
+      "content": "继续补充隐藏用例维度的测试（更大规模的数据、更多事务与崩溃组合、更多过滤谓词组合），保持功能准入的覆盖面。",
+      "status": "pending"
     }
   ]
 }

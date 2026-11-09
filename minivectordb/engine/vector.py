@@ -14,7 +14,7 @@ from typing import List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from ..errors import DataError
+from ..errors import DataError, DimensionMismatchError
 
 FLOAT32_MAX = float(np.finfo(np.float32).max)
 
@@ -45,7 +45,7 @@ def parse_vector_literal(text: str, dim: Optional[int] = None) -> np.ndarray:
                 raise DataError(f"invalid vector element: {part!r}") from None
             values.append(value)
     if dim is not None and len(values) != dim:
-        raise DataError(
+        raise DimensionMismatchError(
             f"vector dimension mismatch: expected {dim}, got {len(values)}"
         )
     if not values:

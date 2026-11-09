@@ -29,6 +29,7 @@ class VectorIndex:
         clusters: int,
         nprobe: int,
         lists: Optional[Dict[str, int]] = None,
+        radii: Optional[Dict[str, float]] = None,
     ):
         self.table = table
         self.name = name
@@ -37,6 +38,10 @@ class VectorIndex:
         self.clusters = clusters
         self.nprobe = max(1, min(nprobe, max(1, clusters)))
         self.lists: Dict[str, int] = dict(lists or {})
+        #: The radius of every cluster: the greatest distance of a member to
+        #: the centroid.  Together with the distance of the query to the
+        #: centroid it bounds the distance of every row of the cluster.
+        self.radii: Dict[str, float] = dict(radii or {})
         self.centroids: Optional[np.ndarray] = None
 
     # -- file keys ------------------------------------------------------
@@ -56,6 +61,7 @@ class VectorIndex:
             "clusters": self.clusters,
             "nprobe": self.nprobe,
             "lists": self.lists,
+            "radii": {key: float(value) for key, value in self.radii.items()},
         }
 
     # -- building -------------------------------------------------------
@@ -87,14 +93,20 @@ class VectorIndex:
             axis=1,
         )
         self.lists = {}
+        self.radii = {}
         for cluster in range(self.clusters):
             members = live_slots[assignment == cluster]
             if members.size:
                 payload = members.astype(np.int32).tobytes()
                 writes.add(self.list_key(cluster), 0, payload)
                 self.lists[str(cluster)] = int(members.size)
+                radius = float(
+                    np.max(l2_distances(vectors[assignment == cluster], centroids[cluster]))
+                )
+                self.radii[str(cluster)] = radius
             else:
                 self.lists[str(cluster)] = 0
+                self.radii[str(cluster)] = 0.0
 
     def assign(self, slot: int, vector: np.ndarray, writes: WriteSet) -> None:
         """Add a freshly inserted row to the closest inverted list."""
@@ -108,6 +120,10 @@ class VectorIndex:
         offset = writes.logical_size(key, self.table.store.size(key))
         writes.add(key, offset, np.asarray([slot], dtype=np.int32).tobytes())
         self.lists[str(cluster)] = self.lists.get(str(cluster), 0) + 1
+        # The radius has to cover the new row as well.
+        radius = float(l2_distances(np.asarray([vector], dtype=np.float32), centroids[cluster])[0])
+        if radius > self.radii.get(str(cluster), 0.0):
+            self.radii[str(cluster)] = radius
 
     # -- reading --------------------------------------------------------
     def read_centroids(self) -> Optional[np.ndarray]:
@@ -127,7 +143,7 @@ class VectorIndex:
         """Return the row slots that the approximate search has to consider."""
         slots: List[int] = []
         seen = set()
-        for _distance, cluster_slots in self.iter_cluster_slots(query):
+        for _distance, _radius, cluster_slots in self.iter_cluster_slots(query):
             for slot in cluster_slots:
                 if slot not in seen:
                     seen.add(slot)
@@ -135,10 +151,11 @@ class VectorIndex:
         return slots
 
     def iter_cluster_slots(self, query: np.ndarray):
-        """Yield ``(cluster distance, slots)`` for every cluster, closest first.
+        """Yield ``(cluster distance, radius, slots)`` for every cluster.
 
-        The caller can stop early once it collected enough candidates, which
-        keeps the approximate search cheap when a filter rejects most rows.
+        The clusters are ordered by the distance of their centroid to the query.
+        The caller can stop early once the bound of a cluster proves that it
+        cannot hold a better row, which keeps the approximate search cheap.
         """
         centroids = self.read_centroids()
         if centroids is None or centroids.shape[0] == 0:
@@ -148,13 +165,18 @@ class VectorIndex:
             key = self.list_key(int(cluster))
             raw = self.table.store.read_all(key)
             count = int(self.lists.get(str(int(cluster)), 0))
+            radius = float(self.radii.get(str(int(cluster)), 0.0))
             if not raw or count <= 0:
-                yield float(distances[cluster]), []
+                yield float(distances[cluster]), radius, []
                 continue
             values = np.frombuffer(raw, dtype=np.int32)[:count]
-            yield float(distances[cluster]), values.tolist()
+            yield float(distances[cluster]), radius, values.tolist()
 
     # -- helpers --------------------------------------------------------
+    def gather_vectors(self, column, slots: np.ndarray) -> np.ndarray:
+        """Read the vectors of the given slots, block by block."""
+        return self._gather_vectors(column, slots)
+
     def _gather_vectors(self, column, slots: np.ndarray) -> np.ndarray:
         dim = int(column.length or 0)
         if slots.size == 0:

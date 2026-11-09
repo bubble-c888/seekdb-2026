@@ -20,6 +20,7 @@ class Server:
         stdin: Optional[TextIO] = None,
         stdout: Optional[TextIO] = None,
         stderr: Optional[TextIO] = None,
+        ready_target: Optional[str] = None,
     ):
         self.database = database
         self.executor = Executor(database)
@@ -28,6 +29,7 @@ class Server:
             stdin=stdin if stdin is not None else sys.stdin,
             stdout=stdout if stdout is not None else sys.stdout,
             stderr=stderr if stderr is not None else sys.stderr,
+            ready_target=ready_target,
         )
         self._stopping = False
 

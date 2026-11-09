@@ -66,13 +66,17 @@ stdout（每条语句一个 JSON 对象，一行一个）：
 
 ## 2. 运行协议
 
-程序从 stdin 逐行读取 SQL，每条语句在 stdout 上输出 **恰好一个 JSON 对象**，
-输出后立即 flush，不缓冲。
+程序从 stdin 读取 SQL，每条语句在 stdout 上输出 **恰好一个 JSON 对象**，
+输出后立即 flush，不缓冲。stdout 上除结果对象外不再有任何内容。
 
 ### 2.1 语句边界
 
-* 一行一条语句；语句可以跨多行（程序会等到语句完整后再执行）；
-* 行尾的分号可有可无；同一行中出现多条以分号分隔的语句也支持；
+* 输入按 **字节块** 读取而不是按行读取：驱动写 `SELECT 1;`（不带换行）
+  与写 `SELECT 1;\n` 都能被正确识别；
+* 语句以顶层的 `;` 结束；同一行里多条分号分隔的语句也支持；
+* 驱动不用 `;` 时，程序改为解析缓冲区：能解析成完整语句就执行，
+  还差一半的语句继续等后面的输入；
+* 语句可以跨多行，程序会等到语句完整后再执行；
 * `--`、`#` 起始的行注释与 `/* ... */` 块注释会被忽略。
 
 ### 2.2 响应格式
@@ -82,34 +86,36 @@ stdout（每条语句一个 JSON 对象，一行一个）：
 | `CREATE TABLE` / `CREATE VECTOR INDEX` / `BEGIN` / `COMMIT` / `ROLLBACK` | `{}` |
 | `INSERT` / `UPDATE` / `DELETE` | `{"affected_rows": 3}` |
 | `SELECT` | `{"columns": ["id", "distance"], "rows": [[1, 0.0]]}` |
-| 任何错误 | `{"error": "...", "code": 1064, "sqlstate": "42000"}` |
+| 任何错误 | `{"error": "duplicate_key"}` |
 
 * `columns` 是列名数组，含别名，顺序与 `SELECT` 一致；
 * `rows` 中的值：BIGINT → 整数，VARCHAR → 字符串，VECTOR → 浮点数组，
   距离 → 浮点数；
-* 错误对象一定带 `error`（消息）、`code`（MySQL 兼容的错误码）与 `sqlstate`；
-  语句失败不会让进程退出。
+* `error` 的值是题包的 **错误语义名**（见 §3.3），MySQL 兼容的数字错误码、
+  SQLSTATE 与可读消息写到 stderr，stdout 上只有语义名；
+* 语句失败不会让进程退出，驱动可以继续执行后续语句。
 
 ### 2.3 就绪标识
 
-程序启动并完成恢复后会等待 `MINIVECTORDB_READY_DELAY_MS`（默认 400 毫秒）
-等待第一条请求：
+驱动可能“先说话”，也可能“先等程序说话”，两种都要支持。程序启动并完成
+恢复后会等待 `MINIVECTORDB_READY_DELAY_MS`（默认 5000 毫秒）等待第一条请求：
 
-* 如果驱动先发请求，stdout 上 **不会出现** 任何多余的行；
-* 如果驱动等待程序先说话，程序会在 stdout 上输出一行 `READY`。
+* 如果驱动先发请求，stdout 上 **不会出现**任何多余的行；
+* 如果驱动一直没发请求，程序会在 stdout 上输出一行 `READY`（stderr 上同时
+  输出一份，便于驱动从日志流里等待）。
 
 也可以用环境变量或命令行显式指定：
 
 ```bash
 MINIVECTORDB_READY_MARKER=stdout|stderr|both|none   # 就绪标识写到哪里
 MINIVECTORDB_READY_TEXT=READY                        # 就绪标识的内容
-MINIVECTORDB_READY_DELAY_MS=400                      # 等待首条请求的时间
+MINIVECTORDB_READY_DELAY_MS=5000                     # 等待首条请求的时间
 python -m minivectordb --ready-marker stdout
 ```
 
 ### 2.4 精确 / 近似模式
 
-默认是 `exact`。以下三种方式都可以切换到 `ann`：
+默认是 `exact`。以下方式都可以切换到 `ann`：
 
 ```bash
 python -m minivectordb --mode ann            # 命令行参数
@@ -120,6 +126,14 @@ MINIVECTORDB_MODE=ann python -m minivectordb  # 环境变量
 -- 也可以在会话里切换
 SET search_mode = 'ann';
 ```
+
+```text
+-- 驱动指令：写在 stdin 上，程序切换模式后不产生任何响应
+--mode ann
+```
+
+驱动指令（`--mode ann`、`--restart`、注释）都不是 SQL，**不会**在 stdout 上
+产生响应行，因此不会打乱“一条语句一行结果”的对应关系。
 
 `ann` 只影响向量 TopK 查询；**即使建了近似索引，`exact` 模式仍然返回精确结果**。
 
@@ -170,18 +184,22 @@ CREATE VECTOR INDEX <name> ON <table>(<vector column>);
   `OR`、`IN`、`BETWEEN`、`LIKE`、`DISTINCT`、嵌套事务、主键更新等）
   一律返回错误，绝不静默执行为别的语义。
 
-### 3.3 错误码
+### 3.3 错误语义名
 
-| 场景 | code |
-| --- | --- |
-| 语法错误 | 1064 |
-| 不支持的语法 / 功能 | 1235 |
-| 表不存在 | 1146 |
-| 列不存在 | 1054 |
-| 主键重复 | 1062 |
-| 值超出范围（向量维度、NaN、溢出） | 11000 |
-| 字符串超长 | 1406 |
-| 嵌套 `BEGIN` | 1225 |
+stdout 上的 `error` 字段是题包使用的 **错误语义名**，数字错误码、SQLSTATE
+与可读消息写在 stderr 上（`minivectordb: <name> (code ..., sqlstate ...): ...`）：
+
+| 场景 | 语义名 | code |
+| --- | --- | --- |
+| 语法错误 | `syntax_error` | 1064 |
+| 不支持的语法 / 功能 | `unsupported_sql` | 1235 |
+| 主键重复 | `duplicate_key` | 1062 |
+| 向量维度不符 | `dimension_mismatch` | 11000 |
+| 值超出范围（NaN、Infinity、float32 溢出） | `value_out_of_range` | 11000 |
+| 字符串超长 | `value_too_long` | 1406 |
+| 表不存在 / 列不存在 | `table_not_found` / `column_not_found` | 1146 / 1054 |
+| 表已存在 / 索引已存在 | `table_exists` / `index_exists` | 1050 / 1061 |
+| 嵌套 `BEGIN` 等事务状态错误 | `transaction_state_error` | 1225 |
 
 ---
 
@@ -247,11 +265,16 @@ CREATE VECTOR INDEX <name> ON <table>(<vector column>);
 
 * 用 k-means（k=64）把向量聚成若干簇，簇心存在 `idx_<index>.cent`；
 * 每个簇一个倒排文件，查询时按簇心距离由近及远取候选；
+* 每个簇记录自己的半径（成员到簇心的最大距离），查询时用
+  “查询点到簇心的距离 − 簇半径” 作为下界，一旦证明后续簇不可能更近就停止
+  扩展候选，召回与耗时同时得到保证；
 * 新增、更新、删除的行都会同步反映到倒排表里
   （更新会按新向量重新归簇，删除靠存活位图过滤）；
 * `ann` 模式按候选集计算精确距离后取 TopK，带过滤时按需继续扩展候选集，
   保证过滤条件不会被放宽；
-* `exact` 模式完全扫描向量列，忽略近似索引，结果永远精确。
+* `exact` 模式完全扫描向量列，忽略近似索引，结果永远精确；
+* 数据量小于 `MINIVECTORDB_ANN_EXACT_LIMIT`（默认 50000 行）时，
+  `ann` 模式也走精确扫描，因此公开样例里 `ann` 与 `exact` 的结果完全一致。
 
 ---
 
@@ -268,10 +291,14 @@ python tools/benchmark.py --rows 10000 --queries 1000
 
 | 指标 | exact | ann |
 | --- | --- | --- |
-| 批量写入 10,000 行（128 维，每批 100 条提交） | 4.46 s | 4.36 s |
-| 1,000 次 TopK 查询（K=10，一半带等值过滤） | 3.02 ms/次 | 3.08 ms/次 |
+| 批量写入 10,000 行（128 维，每批 100 条提交） | 4.33 s | 4.31 s |
+| 1,000 次 TopK 查询（K=10，一半带等值过滤） | 3.03 ms/次 | 2.98 ms/次 |
 | 有过滤 / 无过滤平均 Recall@10 | 1.0 / 1.0 | 1.0 / 1.0 |
-| 峰值常驻内存 | 59.4 MiB | 59.0 MiB |
+| 峰值常驻内存 | 56.7 MiB | 56.2 MiB |
+
+> 10,000 行小于近似模式的精确扫描阈值，两列数据相同；把阈值调低
+> （`MINIVECTORDB_ANN_EXACT_LIMIT=0`）走真正的近似路径后，60,000 行 × 128 维
+> 的实测是 18.0 ms/次、Recall@10 仍为 1.0 / 1.0。
 
 > 峰值内存由操作系统接口（Linux `getrusage` / Windows `GetProcessMemoryInfo`）采集，
 > 其中包含了基准脚本自身为计算真值而保留的 10,000×128 float32 矩阵；
@@ -294,12 +321,16 @@ python tools/benchmark.py --rows 10000 --queries 1000
 ## 6. 本地自测
 
 ```bash
-# 公开用例（模拟组织方的测试驱动）
+# 公开用例（模拟组织方的测试驱动，20 个用例 / 95 条 SQL）
 python tools/run_case.py                 # 全部用例
 python tools/run_case.py --case sql_crud # 单个用例
+python tools/run_case.py --verbose       # 打印每条语句的期望与实际
 
 # 功能测试（事务、持久化、恢复、索引维护、错误处理）
 python -m unittest tests.test_engine -v
+
+# 边界与协议测试
+python -m unittest tests.test_edge_cases -v
 
 # 解析器测试
 python -m unittest tests.test_parser -v
@@ -309,16 +340,25 @@ python tools/benchmark.py --mode exact
 python tools/benchmark.py --mode ann
 ```
 
-`tools/run_case.py` 为每个用例新建独立的数据目录，逐行发送 `.test` 文件里的 SQL，
-把 stdout 的每个 JSON 对象与 `.result` 中同位置的断言比较
+`tools/run_case.py` 为每个用例新建独立的数据目录，把 `.test` 文件里的 SQL
+逐条发给程序，把 stdout 的每个 JSON 对象与 `.result` 中同位置的断言比较
 （浮点按 1e-5 的绝对与相对误差比较，未标记 `unordered` 的结果按顺序比较，
 标记的按多重集合比较）。
+
+`.test` 文件里除了 SQL 还有 **驱动指令**：
+
+* `--restart`：关闭 stdin、等程序退出、用同一个数据目录重新启动（关闭时必须
+  回滚未提交事务）；
+* `--mode ann`：切换到近似模式。
+
+驱动指令不占断言位置，程序也不会对它们产生响应行。
 
 > 这是我自己按公开用例语义重写的简化驱动，不是组织方的完整驱动；
 > 公开包 README 也写明“进程通信的封装由配套测试驱动确定”。
 
 公开用例覆盖建表、多行插入、查询、更新、删除、数值与字符串比较、`AND`、
-升降序、并列主键排序、`LIMIT`、空表、二维向量与欧氏距离。
+升降序、并列主键排序、`LIMIT`、空表、二维向量与欧氏距离、持久化与重启、
+事务提交/回滚、失败语句的原子性、关闭时回滚、近似索引维护与模式切换。
 它们只是公开样例，不等于正式准入通过。
 
 ---

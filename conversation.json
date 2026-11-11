@@ -414,9 +414,9 @@
     {
       "id": "e23",
       "question": "协议改成题包公布的 JSONL 之后，功能与性能是否仍然成立？",
-      "method": "用题包自带的 protocol_check/run.py（判题器同源）跑全部公开用例，用本地驱动 tools/run_case.py 在 Windows 上跑同一批用例，断言直接复用题包的 protocol_check/_assertions.py；再在官方资源限制的容器里跑规模测试。",
+      "method": "用题包自带的 protocol_check/run.py（判题器同源）跑全部公开用例，用本地驱动 tools/run_case.py 在 Windows 上跑同一批用例，断言直接复用题包的 protocol_check/_assertions.py；再在官方资源限制的容器里跑规模测试，其中包括平台反馈过的“17,000 行 × 131,072 字符”场景。",
       "command": "docker run --rm -v mvdb-check-out:/out mvdb-checker:local python tools/run_checker.py --output /out/check-all",
-      "result_evidence": "官方 protocol_check/run.py 在容器内 20/20 PASS；本地可移植驱动 20/20；175 个单元测试通过；容器内 2 GiB 限额下 200,000 行 × 128 维：写入 81.8 s、索引 9.7 s、带过滤 TopK 32 ms、全表 UPDATE 1.39 s、峰值内存 251 MiB；50,000 行 × 8 KB 互异文本：写入 73.1 s、全表 UPDATE 0.40 s、峰值内存 462.7 MiB。",
+      "result_evidence": "官方 protocol_check/run.py 在容器内 20/20 PASS；本地可移植驱动 20/20；175 个单元测试通过；容器内 2 GiB 限额下 200,000 行 × 128 维：写入 81.8 s、索引 9.7 s、带过滤 TopK 32 ms、全表 UPDATE 1.39 s、峰值内存 251 MiB；50,000 行 × 8 KB 互异文本：写入 73.1 s、全表 UPDATE 0.40 s、峰值内存 462.7 MiB；平台反馈对应的场景（17,000 行 × 131,072 字符，逻辑数据 2.23 GB）：容器峰值内存 41 MiB、全表 UPDATE 0.115 s、强杀重启后数据完整、全表删除后为空。",
       "conclusion": "协议换成题包公布的 JSONL 之后，公开用例、单元测试与规模测试都成立。规模测试同时暴露了一个真实的限制：VARCHAR 字典的内容常驻内存，互不相同的文本总量很大时内存占用会跟着上升。"
     },
     {
@@ -519,7 +519,7 @@
       "student_evidence": "你去找官方驱动给我",
       "student_evidence_pointer": "/user_prompts/3/content",
       "student_evidence_note": "学生要求拿到组织方的官方驱动，而不是继续猜封装形式。",
-      "result_evidence": "官方 protocol_check/run.py 在容器内 20/20 PASS；本地可移植驱动 20/20；175 个单元测试通过；容器内 2 GiB 限额下 200,000 行 × 128 维：写入 81.8 s、索引 9.7 s、带过滤 TopK 32 ms、全表 UPDATE 1.39 s、峰值内存 251 MiB；50,000 行 × 8 KB 互异文本：写入 73.1 s、全表 UPDATE 0.40 s、峰值内存 462.7 MiB。",
+      "result_evidence": "官方 protocol_check/run.py 在容器内 20/20 PASS；本地可移植驱动 20/20；175 个单元测试通过；容器内 2 GiB 限额下 200,000 行 × 128 维：写入 81.8 s、索引 9.7 s、带过滤 TopK 32 ms、全表 UPDATE 1.39 s、峰值内存 251 MiB；50,000 行 × 8 KB 互异文本：写入 73.1 s、全表 UPDATE 0.40 s、峰值内存 462.7 MiB；平台反馈对应的场景（17,000 行 × 131,072 字符，逻辑数据 2.23 GB）：容器峰值内存 41 MiB、全表 UPDATE 0.115 s、强杀重启后数据完整、全表删除后为空。",
       "result_evidence_pointer": "/experiments/22/result_evidence",
       "agent_explanation": "在驱动公开之前，协议层只能按公开 .result 的语义反推，那一版是错的。题包把 STDIO_PROTOCOL.md 和官方检查器放进分支之后，协议层被整体重写：启动主动输出握手对象并 flush、每个请求一行 JSON、响应回传同类型 id 并带布尔 ok、修改带 affected_rows、失败用 error.code 与 error.message、shutdown 之后 stdout 不再有任何输出。本地驱动也改成同一套协议，断言直接引用题包的断言模块，这样本地结论与判题结论用的是同一套规则，不会再各说各话。",
       "related_student_evidence": [

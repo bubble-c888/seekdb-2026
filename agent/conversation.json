@@ -129,5 +129,32 @@
       "url": "https://github.com/bubble-c888/seekdb-2026/actions/runs/42992902164"
     },
     "limitations": "The platform did not identify the failing SQL. Reproducing a real request-timeout cause does not prove it is the only hidden-case failure. A new formal evaluation has not been run."
+  },
+  "large_storage_timeout_fix": {
+    "student_feedback": {
+      "source": "student",
+      "content": "正确性门槛未通过（失败用例数：1）。原因：JSON response timeout（未及时收到JSON响应，请检查换行、flush和程序阻塞） × 1。未执行性能评测。正确性门槛未通过（失败用例数：1）。原因：JSON response timeout（未及时收到JSON响应，请检查换行、flush和程序阻塞） × 1。未执行Agent Prompt评测。还是错的"
+    },
+    "organizer_notice": {
+      "source": "user-supplied screenshot of organizer message",
+      "content": "GitHub seekdb 2026 competition round2分支的MySQLtest文件夹只放出了部分测试，另有隐藏测试集。"
+    },
+    "agent_change": {
+      "source": "agent",
+      "content": "Reproduced a second independent timeout beyond the parser issue. Replaced full-row UPDATE redo with sparse column patches, removed the unused autocommit overlay copy, and added atomic applied-sequence/catalog checkpoints. WAL history is retained and later redo remains idempotent. No request timeout or memory budget was relaxed."
+    },
+    "before": {
+      "source": "GitHub Actions run 42997470561",
+      "output": "Logical live text payload=2228224000 bytes; Docker memory limit=2147483648 bytes. Inserted all 17000 rows. Filtered scan=8.979s; index build=5.973s. UPDATE large SET g = 4 failed with TimeoutError: JSON response timeout under the unchanged 60-second request limit."
+    },
+    "after": {
+      "source": "GitHub Actions run 42999026249",
+      "output": "Same 17000 rows and logical payload under unchanged Docker limits. Full table UPDATE=10.599s; explicit transaction UPDATE=8.483s; COMMIT=4.277s; force-kill/restart succeeded; post-recovery query=4.890s; DELETE=8.585s. PASS larger-than-memory scenario."
+    },
+    "other_checks": {
+      "source": "GitHub Actions run 42999026223 and executed local fault injection",
+      "output": "Official public tests, 12000-row 128D bulk regression and independent 175 filtered TopK / 5 force-kill recovery checks passed. Patch rollback and delete/reinsert checks passed. A process was terminated during committed patch materialization and twice during recovery; final recovery preserved every large text field and correct final values."
+    },
+    "limitations": "Agent designed and executed these tests; no student design, technical explanation or learning outcome is fabricated. The organizer has not identified the official failed SQL. These are independent contract-based scenarios, not recovered hidden inputs. Formal acceptance and performance ranking remain unverified."
   }
 }

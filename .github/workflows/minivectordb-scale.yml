@@ -1,0 +1,14 @@
+name: MiniVectorDB scale diagnosis
+on:
+  push:
+    branches: [round2-scale-diagnosis]
+permissions:
+  contents: read
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t minivectordb:scale .
+      - run: python3 check_scale.py --image minivectordb:scale

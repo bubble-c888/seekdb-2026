@@ -45,3 +45,9 @@ python protocol_check/run.py --image minivectordb:local --output protocol-result
 ```
 
 The first two scripts use temporary directories and do not require Docker. The final command requires Linux/Docker. It passed on GitHub Actions Linux after the initial Windows checks (runs 42988403016 and 42988666245). Resource limits, data larger than RAM, formal 29-case admission and competition performance have NOT been measured. Each JSON request and response is materialized in memory. Row scans are streamed, TopK retains K rows, and external sorting limits run size; these design properties are not a substitute for a resource-limit test. Recovery replays all historical commits without checkpoint compaction, and the coordinate index can approach a full scan in high dimensions. Per-row filesystem overhead may limit performance. Do not infer a ranking or full score from the public results.
+
+## Timeout fix validation (2026-11-11)
+
+Platform reported one JSON response timeout without identifying the SQL. A parser regression was independently reproduced: copying/scanning the remaining SQL per token caused a 15,480,910-byte statement to require 96.393 seconds to parse; after removing that quadratic work, the same local benchmark required 0.442 seconds. This compares parsing only.
+
+GitHub Actions run 42992902164 built the fixed Docker image, passed official public tests, and executed a 12,000-row 128-dimensional insert through the unchanged official Docker transport under its 60-second request limit and 2-GiB resource setting. The 15,481,803-byte INSERT responded in 8.686 seconds. Filtered indexed TopK and two force-kill recoveries passed; independent smaller recovery and exact TopK checks also passed. These are new local/CI checks, not proof of hidden formal acceptance. Run `python3 check_bulk.py --image minivectordb:local` to reproduce the added regression.

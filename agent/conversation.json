@@ -114,5 +114,20 @@
     "limitations": {
       "content": "Initial local runs used a Windows adapter. Subsequent actual Linux Docker build and official public protocol checks passed on GitHub Actions. Formal 29-case admission, larger-than-memory testing and competition performance remain unverified. No student technical understanding or explanations have been fabricated."
     }
+  },
+  "timeout_fix_2026_11_11": {
+    "source": "actual development records",
+    "student_feedback": "正确性门槛未通过（失败用例数：1）。原因：JSON response timeout（未及时收到JSON响应，请检查换行、flush和程序阻塞） × 1。未执行Agent Prompt评测。",
+    "agent_change": "Removed per-token copies and scans of the remaining SQL text; trailing whitespace is checked only when tokenization cannot match. Added a large-statement Docker regression using the unchanged official transport and resource limits.",
+    "parser_measurement": {
+      "source": "executed local Python benchmark",
+      "output": "Old/new parsing of the identical 15,480,910-byte, 12,000-row SQL: 96.393 seconds / 0.442 seconds. This is a parser-only comparison, not full insert latency."
+    },
+    "linux_result": {
+      "source": "GitHub Actions run 42992902164",
+      "output": "bulk_rows=12000; sql_bytes=15481803; insert_seconds=8.686; filtered_top1_seconds=0.001. PASS: 12000-row 128D bulk statement; exact row identities; filtered indexed TopK; two forced-kill recoveries. Official public SQL and independent 175 TopK / 5 recovery checks also passed.",
+      "url": "https://github.com/bubble-c888/seekdb-2026/actions/runs/42992902164"
+    },
+    "limitations": "The platform did not identify the failing SQL. Reproducing a real request-timeout cause does not prove it is the only hidden-case failure. A new formal evaluation has not been run."
   }
 }

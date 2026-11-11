@@ -2,7 +2,7 @@ name: MiniVectorDB preflight
 on:
   workflow_dispatch:
   push:
-    branches: [minivectordb-local-validation, round2-integration-validation, 2026-competition-round2]
+    branches: [minivectordb-local-validation, round2-integration-validation, round2-timeout-fix, 2026-competition-round2]
 permissions:
   contents: read
 jobs:
@@ -17,6 +17,8 @@ jobs:
         run: python3 protocol_check/run.py --image minivectordb:preflight --handshake-only --output protocol-results/handshake
       - name: Official public SQL
         run: python3 protocol_check/run.py --image minivectordb:preflight --output protocol-results/public
+      - name: Large batch and recovery under official limits
+        run: python3 check_bulk.py --image minivectordb:preflight
       - name: Independent Linux recovery and TopK checks
         run: python3 check_recovery.py
       - name: Retain preflight logs

@@ -29,8 +29,11 @@ class Parser:
     def __init__(self, sql):
         self.tokens = []
         pos = 0
-        while sql[pos:].strip():
+        # Do not copy the remaining SQL per token: a bulk INSERT may be MBs.
+        while pos < len(sql):
             match = self.pattern.match(sql, pos)
+            if match is None and sql[pos:].isspace():
+                break
             require(match is not None)
             self.tokens.append(next(x for x in match.groups() if x is not None))
             pos = match.end()

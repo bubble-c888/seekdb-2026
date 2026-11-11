@@ -73,6 +73,10 @@
       {
         "source": "student",
         "content": "完成这个，需要下载东西安装在D盘"
+      },
+      {
+        "source": "student",
+        "content": "https://github.com/bubble-c888/seekdb-2026"
       }
     ],
     "context": {
@@ -100,10 +104,15 @@
         "source": "GitHub Actions",
         "status": "executed",
         "output": "MiniVectorDB preflight run 42988403016 completed with conclusion success. Workflow steps: build submitted source Docker image; official handshake; official public SQL. URL: https://github.com/bubble-c888/seekdb-2026/actions/runs/42988403016"
+      },
+      {
+        "source": "GitHub Actions",
+        "status": "executed",
+        "output": "Integration commit 9db13e1 passed run 42988666245. Linux Docker source build, official handshake and public SQL checks, and independent Linux force-kill recovery/filtered TopK checks all succeeded. https://github.com/bubble-c888/seekdb-2026/actions/runs/42988666245"
       }
     ],
     "limitations": {
-      "content": "Windows adapter reused official public assertions. Official POSIX driver failed on this Windows environment; actual Linux Docker build and resource/performance evaluation are not yet executed. No fabricated student predictions, explanations, feedback or learning outcomes are included. Public success does not imply formal admission or a score."
+      "content": "Initial local runs used a Windows adapter. Subsequent actual Linux Docker build and official public protocol checks passed on GitHub Actions. Formal 29-case admission, larger-than-memory testing and competition performance remain unverified. No student technical understanding or explanations have been fabricated."
     }
   }
 }

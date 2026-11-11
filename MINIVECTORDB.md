@@ -36,7 +36,7 @@ The vector index is a custom disk-resident sorted first-coordinate projection wi
 
 ## Validation and limits
 
-Windows local validation reused the unchanged official public SQL and result assertions: 20 cases and 95 SQL assertions passed. The official POSIX driver could not run on this Windows host; this is NOT a Docker or formal evaluation pass. Independent checks compare 175 filtered TopK results against float32 reference calculations and verify five forced-termination recoveries, transaction rollback and failed-statement atomicity.
+Windows local validation reused the unchanged official public SQL and result assertions: 20 cases and 95 SQL assertions passed. The official POSIX driver could not run directly on this Windows host. Subsequent GitHub Actions Linux runs built the Docker image and passed the official handshake and public SQL tests. This is not formal 29-case admission. Independent checks compare 175 filtered TopK results against float32 reference calculations and verify five forced-termination recoveries, transaction rollback and failed-statement atomicity.
 
 ```sh
 python check_windows.py
@@ -44,4 +44,4 @@ python check_recovery.py
 python protocol_check/run.py --image minivectordb:local --output protocol-results/public
 ```
 
-The first two scripts use temporary directories and do not require Docker. The final command requires Linux/Docker and has not yet been verified here. Resource limits, data larger than RAM, formal 29-case admission and competition performance have NOT been measured. Each JSON request and response is materialized in memory. Row scans are streamed, TopK retains K rows, and external sorting limits run size; these design properties are not a substitute for a resource-limit test. Recovery replays all historical commits without checkpoint compaction, and the coordinate index can approach a full scan in high dimensions. Per-row filesystem overhead may limit performance. Do not infer a ranking or full score from the public results.
+The first two scripts use temporary directories and do not require Docker. The final command requires Linux/Docker. It passed on GitHub Actions Linux after the initial Windows checks (runs 42988403016 and 42988666245). Resource limits, data larger than RAM, formal 29-case admission and competition performance have NOT been measured. Each JSON request and response is materialized in memory. Row scans are streamed, TopK retains K rows, and external sorting limits run size; these design properties are not a substitute for a resource-limit test. Recovery replays all historical commits without checkpoint compaction, and the coordinate index can approach a full scan in high dimensions. Per-row filesystem overhead may limit performance. Do not infer a ranking or full score from the public results.

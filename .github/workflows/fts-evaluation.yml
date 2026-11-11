@@ -1,0 +1,66 @@
+name: FTS source build and fixed benchmark
+on:
+  workflow_dispatch:
+  push:
+    branches: [fts-fullscore-evaluation]
+permissions:
+  contents: read
+jobs:
+  evaluate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    env:
+      CCACHE_DIR: ${{ github.workspace }}/.fts-ccache
+      CCACHE_MAXSIZE: 3G
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Linux build prerequisites
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y git wget rpm rpm2cpio cpio make build-essential binutils m4 libtool-bin libncurses-dev libaio1t64 python3 mariadb-client zstd
+          mkdir -p fts-results
+          sha256sum tools/benchmark/fts_large_bench* > fts-results/benchmark-assets.sha256
+      - uses: ./.github/actions/setup-rust
+      - uses: actions/cache@v4
+        with:
+          path: |
+            deps/3rd
+            .fts-ccache
+          key: fts-linux-build-${{ hashFiles('deps/init/oceanbase.el9.x86_64.deps', 'rust/Cargo.lock') }}
+      - name: Configure release source build
+        run: |
+          set -o pipefail
+          bash build.sh release --init -DOB_USE_CCACHE=ON -DNEED_PARSER_CACHE=OFF 2>&1 | tee fts-results/configure.log
+          echo "$GITHUB_WORKSPACE/deps/3rd/usr/local/oceanbase/devtools/bin" >> "$GITHUB_PATH"
+      - name: Compile actual database kernel
+        run: |
+          set -o pipefail
+          make -C build_release -j2 seekdb 2>&1 | tee fts-results/build.log
+          test -x build_release/src/observer/seekdb
+          ldd build_release/src/observer/seekdb | tee fts-results/ldd.txt
+      - name: FTS correctness suites
+        run: python3 .github/script/fts-evaluation.py
+      - name: Full unchanged fixed benchmark
+        run: |
+          set -euo pipefail
+          sha256sum -c fts-results/benchmark-assets.sha256
+          python3 .github/script/seekdb/sdb.py start --binary "$PWD/build_release/src/observer/seekdb" --base-dir "$RUNNER_TEMP/seekdb-fts-perf" --parameter memory_limit=6G
+          python3 .github/script/seekdb/sdb.py wait-ready --client mysql --base-dir "$RUNNER_TEMP/seekdb-fts-perf" --timeout 180
+          export MYSQL='mysql -h127.0.0.1 -P2881 -uroot -N -s -A --default-character-set=utf8mb4'
+          export MYSQL_VERBOSE='mysql -h127.0.0.1 -P2881 -uroot -A --default-character-set=utf8mb4'
+          LABEL=candidate ROWS=20000 BATCH=500 ROUNDS=3000 QUERY_ROUNDS=200 SAMPLES=3 WARMUP=30 SKIP_LOAD=0 OUTPUT="$PWD/fts-results/report.txt" bash tools/benchmark/fts_large_bench.sh
+          python3 tools/benchmark/fts_large_bench_score.py fts-results/report.txt | tee fts-results/score.txt
+      - name: Collect diagnostics
+        if: always()
+        run: |
+          mkdir -p fts-results
+          df -h > fts-results/disk.txt
+          free -h > fts-results/memory.txt
+          if test -d "$RUNNER_TEMP/seekdb-fts-perf"; then
+            find "$RUNNER_TEMP/seekdb-fts-perf" -name '*.log' -type f -exec sh -c 'tail -n 120 "$1"' sh {} \; > fts-results/server-tail.log
+          fi
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: fts-source-build-and-benchmark
+          path: fts-results/

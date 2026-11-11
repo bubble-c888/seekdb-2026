@@ -384,6 +384,15 @@ class Parser:
                 if table_pk is not None:
                     self._err("duplicate PRIMARY KEY definition")
                 table_pk = pk_name
+            elif self.at_word("FOREIGN") or self.at_word("CONSTRAINT"):
+                # The task statement lists foreign keys as not supported; they
+                # have to be reported as an unsupported statement, not as a
+                # malformed one.
+                _unsupported("foreign key constraints are not supported")
+            elif self.at_word("CHECK"):
+                _unsupported("check constraints are not supported")
+            elif self.at_word("UNIQUE"):
+                _unsupported("unique constraints are not supported")
             else:
                 col = self._parse_column_def()
                 columns.append(col)
@@ -444,6 +453,11 @@ class Parser:
                 self.advance()
                 self._expect_word("KEY")
                 primary_key = True
+            elif self.at_word("REFERENCES"):
+                # An inline foreign key, e.g. ``p BIGINT REFERENCES t(id)``.
+                _unsupported("foreign key constraints are not supported")
+            elif self.at_word("UNIQUE"):
+                _unsupported("unique constraints are not supported")
             else:
                 break
         return ast.ColumnDef(

@@ -38,6 +38,10 @@ DISTANCE_RE = re.compile(
     re.IGNORECASE,
 )
 
+#: The value range of a MySQL ``BIGINT`` (signed 64 bit).
+INT64_MIN = -(2 ** 63)
+INT64_MAX = 2 ** 63 - 1
+
 #: Up to this number of rows the approximate mode scans the vector column
 #: exactly.  The reference implementation of the task package uses an exact
 #: scan as well, so the small correctness cases have to produce the very same
@@ -259,17 +263,32 @@ class Executor:
             values[column.key] = self._coerce(table, column, literal)
         return values
 
+    @staticmethod
+    def _check_int64(value: int, column: ColumnSpec) -> int:
+        """Reject a BIGINT literal that does not fit into 64 bit.
+
+        The task statement asks for a value error instead of a truncated or
+        wrapped number, and the same rule applies to a conversion that would
+        overflow.
+        """
+        if value < INT64_MIN or value > INT64_MAX:
+            raise DataError(
+                f"value {value} is out of range for BIGINT column '{column.name}'"
+            )
+        return value
+
     def _coerce(self, table: Table, column: ColumnSpec, literal: ast.Literal) -> Any:
         if column.type == "BIGINT":
             if isinstance(literal, ast.IntLiteral):
-                return literal.value
+                return self._check_int64(literal.value, column)
             text = str(literal.value).strip()
             try:
-                return int(text)
+                value = int(text)
             except ValueError:
                 raise DataError(
                     f"cannot use value '{text}' for BIGINT column '{column.name}'"
                 )
+            return self._check_int64(value, column)
         if column.type == "VARCHAR":
             text = str(literal.value)
             if column.length is not None and len(text) > column.length:
@@ -790,8 +809,14 @@ class Executor:
                     values = -values
             else:
                 vectors = table.read_vectors(reference.column, start, count)
-                distances = l2_distances(vectors[slots - start], reference.vector)
-                values = -distances if order_item.desc else distances
+                if slots.size == count:
+                    # Every row of the chunk passes the filter, so the distances
+                    # are computed for the whole chunk: copying the selected
+                    # rows first would only duplicate the array.
+                    values = l2_distances(vectors, reference.vector)
+                else:
+                    values = l2_distances(vectors[slots - start], reference.vector)
+                values = -values if order_item.desc else values
             arrays.append(values)
         return arrays
 

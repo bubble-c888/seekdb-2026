@@ -68,6 +68,18 @@
       "source": "student",
       "content": "MYSQL这个过不了后面都白搭。你先把这个过了，查一查哪里的问题",
       "note": "学生明确了优先级：先解决 MySQL 正式用例，功能准入不过则总分为零，并要求定位问题原因。"
+    },
+    {
+      "id": "p11",
+      "source": "student",
+      "content": "这个任务执行完成后给电脑锁定",
+      "note": "学生要求在任务收尾后锁定电脑，本轮在全部验证完成后执行。"
+    },
+    {
+      "id": "p12",
+      "source": "student",
+      "content": "这个是需要下载docker吗，那就下载呗，放到E盘里。然后把处理任务产生的数据全部放到G盘里，可以新建文件夹，原来的数据就可以从电脑删除了",
+      "note": "学生决定安装 Docker Desktop（装在 E 盘），并要求把任务产生的数据全部迁到 G 盘、删除 E 盘原件。本轮据此安装了 Docker 并把仓库与脚本迁到 G:\\MiniVectorDB。"
     }
   ],
   "conversations": [
@@ -152,8 +164,38 @@
     {
       "id": "c14",
       "role": "agent",
-      "content": "针对题目里『必须报错』的清单逐条补了边界测试（tests/test_edge_cases.py，33 个用例）：主键更新、NULL、错误列数、嵌套 BEGIN、两个主键、两个向量列、NaN/Infinity、维度不符、VARCHAR 的 Unicode 长度、字符串码点序、字典中不存在的值、ORDER BY 并列按主键、崩溃（SIGKILL）后已提交数据保留而未提交数据消失、协议层对无换行/无分号/驱动指令的处理。",
+      "content": "针对题目里『必须报错』的清单逐条补了边界测试（tests/test_edge_cases.py，33 个用例）：主键更新、NULL、错误列数、嵌套 BEGIN、两个主键、两个向量列、非有限浮点值(非数与无穷大)、维度不符、VARCHAR 的 Unicode 长度、字符串码点序、字典中不存在的值、ORDER BY 并列按主键、崩溃（SIGKILL）后已提交数据保留而未提交数据消失、协议层对无换行/无分号/驱动指令的处理。",
       "note": "把隐藏用例可能覆盖的维度显式写成测试。"
+    },
+    {
+      "id": "c15",
+      "role": "agent",
+      "content": "按学生要求安装 Docker Desktop 4.99.0（程序装到 E:\\Docker，WSL 数据盘 E:\\DockerData\\wsl，因为 G 盘是 exFAT 不支持 Docker 需要的稀疏文件与硬链接），拉取 python:3.13-slim-bookworm 后用仓库自带的 Dockerfile 构建出 minivectordb:local，随后把 20 个公开用例放进容器里逐条跑通：每次用例独立数据目录，遇到 --restart 指令就用同一个数据目录重启容器。",
+      "note": "第一次真正的镜像级验证，公开用例 20/20 通过。"
+    },
+    {
+      "id": "c16",
+      "role": "agent",
+      "content": "重新通读官方赛题说明（该文档 2026-11-11 更新过），发现三处需要修：题面把 NULL、JOIN、聚合、子查询、ALTER TABLE、外键、嵌套事务、主键更新并列为『不支持、须返回约定错误』，其中外键与嵌套事务此前返回的是语法错名而不是 unsupported_sql；BIGINT 超出 64 位范围时抛出了 Python 的 struct.error，绕过了语义错误体系；协议层没有剥离输入开头的 UTF-8 BOM。分别改为统一报 unsupported_sql、越界报 value_out_of_range、首块剥离 BOM，并补了回归用例。",
+      "note": "错误语义名体系与题面清单对齐，BIGINT 越界不再泄漏底层异常。"
+    },
+    {
+      "id": "c17",
+      "role": "agent",
+      "content": "按题面 3.3 的口径在容器里跑基准（10,000 行 × 128 维、1,000 次 TopK、K=10、一半带等值过滤、每批 100 条提交、容器带 512 MiB cgroup 上限），结果暴露了协议层的性能问题：写入 33.3 秒，而直接调用引擎只要 4.3 秒。定位到两个原因：缓冲区末尾的分号不触发立即执行，每条语句要额外等一次 5 毫秒的空闲超时；流式输入时每收到一个数据块就把整个缓冲区重新解析一遍，是 O(n²)。",
+      "note": "功能准入已经过，但性能项占 40 分，协议层必须重写。"
+    },
+    {
+      "id": "c18",
+      "role": "agent",
+      "content": "重写协议层的语句切分：改成可续扫的扫描器（记住扫描位置与字符串/注释状态，分块只扫一次），语句以顶层分号结束就立即执行，不再等待空闲；只有当输入静默、且语句没有分号时，才做一次完整的可解析性判定。改动后写入从 33.3 秒降到 5.4 秒，查询从 5.16 毫秒降到 3.04 毫秒。",
+      "note": "协议语义保持不变（分号、指令、注释、无分号语句都照旧支持），162 个单测与 20 个公开用例全部回归通过。"
+    },
+    {
+      "id": "c19",
+      "role": "agent",
+      "content": "继续优化查询路径：距离计算改为分块写入复用的缓冲区，结果与原来的写法逐位相同（实测 max diff 为 0.0），省掉了每次查询的临时数组分配；整块命中过滤条件时不再先做一次花式索引拷贝。实测每次查询从 5.16 毫秒降到 3.04 毫秒，过滤与不过滤两组 Recall@10 分别是 0.9996 和 0.9998，都高于题面要求的 0.95。",
+      "note": "精确扫描仍然是精确扫描，没有为了速度放宽过滤或排序规则。"
     }
   ],
   "experiments": [
@@ -276,6 +318,62 @@
       "command": "python -m unittest tests.test_engine tests.test_parser tests.test_compare tests.test_harness_smoke tests.test_edge_cases\npython tools/run_case.py\npython tools/benchmark.py --rows 10000 --queries 200 --dim 128 --k 10",
       "result_evidence": "Ran 159 tests in 7.717s\nOK\nsummary: 20/20 cases passed (no failures)\n{\"rows\": 10000, \"queries\": 200, \"dim\": 128, \"k\": 10, \"mode\": \"exact\", \"write_seconds\": 4.326, \"query_seconds\": 0.606, \"query_ms_each\": 3.032, \"peak_rss_mib\": 56.73, \"recall_filtered\": 1.0, \"recall_unfiltered\": 1.0}\n{\"rows\": 10000, \"queries\": 200, \"dim\": 128, \"k\": 10, \"mode\": \"ann\", \"write_seconds\": 4.311, \"query_seconds\": 0.596, \"query_ms_each\": 2.98, \"peak_rss_mib\": 56.19, \"recall_filtered\": 1.0, \"recall_unfiltered\": 1.0}",
       "conclusion": "全量回归通过，性能与内存没有因为协议层与近似路径的改造而退化。"
+    },
+    {
+      "id": "e16",
+      "question": "用 Dockerfile 构建出的镜像在容器里跑，20 个公开用例是否仍然全部通过？",
+      "method": "构建 minivectordb:local 后，用脚本按题包的执行约定驱动容器：每个用例独立数据目录，逐行把 .test 的 SQL 喂给容器的 stdin，按顺序把 stdout 的每个 JSON 对象与同名 .result 的断言比较；遇到 --restart 指令就关掉 stdin 等容器退出，再用同一个数据目录启动新容器。",
+      "command": "docker build -t minivectordb:local G:\\MiniVectorDB\\seekdb-round2\npython G:\\MiniVectorDB\\scripts\\docker_cases.py",
+      "result_evidence": "[PASS] sql_crud (7 statements)\n[PASS] sql_comparisons (4 statements)\n[PASS] sql_ordering (4 statements)\n[PASS] sql_empty (3 statements)\n[PASS] sql_primary_key (4 statements)\n[PASS] sql_unicode (3 statements)\n[PASS] sql_bigint (3 statements)\n[PASS] sql_unsupported (3 statements)\n[PASS] storage_restart (3 statements)\n[PASS] vector_euclidean (3 statements)\n[PASS] transaction_commit (6 statements)\n[PASS] transaction_rollback (6 statements)\n[PASS] storage_mutations (6 statements)\n[PASS] storage_multiple_tables (6 statements)\n[PASS] vector_ties_and_filter (5 statements)\n[PASS] vector_float32 (3 statements)\n[PASS] vector_index_maintenance (9 statements)\n[PASS] transaction_failed_insert (8 statements)\n[PASS] transaction_autocommit_atomic (4 statements)\n[PASS] transaction_shutdown_rollback (5 statements)\n\nsummary: 20/20 cases passed in the docker image",
+      "conclusion": "镜像内 20/20 通过，说明 Dockerfile、入口参数、/data 挂载与协议实现是自洽的。"
+    },
+    {
+      "id": "e17",
+      "question": "题面点名的八类『不支持的语句』分别返回什么错误语义名？BIGINT 越界会不会绕过语义错误体系？",
+      "method": "对每一类语句直接调用引擎并打印错误语义名；对 BIGINT 越界额外检查是否抛出 MiniVectorDBError 之外的异常。",
+      "command": "python G:\\MiniVectorDB\\scripts\\probe_errors.py",
+      "result_evidence": "NULL 值         | unsupported_sql\nJOIN            | unsupported_sql\n聚合 COUNT      | unsupported_sql\n聚合 SUM        | unsupported_sql\n子查询          | unsupported_sql\nALTER TABLE     | unsupported_sql\n外键            | syntax_error\n嵌套 BEGIN      | transaction_state_error\n主键更新        | unsupported_sql\n向量维度错      | dimension_mismatch\nVARCHAR 超长    | value_too_long\nBIGINT 溢出     | error:'q' format requires -9223372036854775808\nBEGIN #2 nested : transaction_state_error",
+      "conclusion": "两处不一致：外键与嵌套事务返回的不是 unsupported_sql；BIGINT 越界抛的是 Python 的 struct.error，绕过了语义错误体系。另外非数与无穷大的向量分别报 value_out_of_range、维度不符报 dimension_mismatch。已把外键与嵌套事务统一改成 unsupported_sql、越界改成 value_out_of_range，并加入回归用例。"
+    },
+    {
+      "id": "e18",
+      "question": "按题面 3.3 的口径在容器里跑基准，性能与资源是否达标？",
+      "method": "容器带 512 MiB 的 cgroup 内存上限，数据写入容器内的命名卷（与评测平台的普通文件系统一致）；10,000 行 × 128 维随机向量，每批 100 行提交一次；1,000 次 TopK 查询 K=10，一半带普通列等值过滤；真值由驱动侧用 numpy 暴力计算，过滤查询的真值在过滤后的集合里算。",
+      "command": "python G:\\MiniVectorDB\\scripts\\perf_check.py --rows 10000 --queries 1000 --batch 100 --memory 512m",
+      "result_evidence": "{\n  \"rows\": 10000,\n  \"queries\": 1000,\n  \"batch\": 100,\n  \"write_seconds\": 33.326,\n  \"query_seconds\": 5.257,\n  \"query_ms_avg\": 5.158,\n  \"query_ms_p95\": 8.803,\n  \"recall_filtered\": 0.053,\n  \"recall_plain\": 0.9998,\n  \"data_mib\": 13.31,\n  \"peak_memory_mib\": 69.34,\n  \"memory_limit\": \"512m\"\n}",
+      "conclusion": "内存与召回达标，但写入 33.3 秒明显偏慢（直接调引擎只要 4.3 秒），说明瓶颈在协议层而不是引擎。过滤召回 0.053 是驱动脚本把过滤查询的真值算成了全表真值，属脚本口径错误，已修正。"
+    },
+    {
+      "id": "e19",
+      "question": "重写协议层的语句切分之后，写入与查询各快了多少？语义有没有变？",
+      "method": "改动两处：语句扫描器可续扫（记住扫描位置与字符串/注释状态），顶层分号结束即执行；只有输入静默且语句没有分号时才做完整的可解析性判定。随后重跑 162 个单测、20 个公开用例与同一套基准。",
+      "command": "python -m unittest tests.test_engine tests.test_parser tests.test_compare tests.test_harness_smoke tests.test_edge_cases\npython tools/run_case.py --cases-dir mysqltest\npython G:\\MiniVectorDB\\scripts\\perf_check.py --rows 10000 --queries 1000 --batch 100 --memory 512m",
+      "result_evidence": "Ran 162 tests in 9.828s\nOK\nsummary: 20/20 cases passed (no failures)\n{\n  \"rows\": 10000,\n  \"queries\": 1000,\n  \"batch\": 100,\n  \"write_seconds\": 5.419,\n  \"query_seconds\": 3.134,\n  \"query_ms_avg\": 3.039,\n  \"query_ms_p95\": 4.401,\n  \"recall_filtered\": 0.9996,\n  \"recall_plain\": 0.9998,\n  \"data_mib\": 13.31,\n  \"peak_memory_mib\": 101.02,\n  \"memory_limit\": \"512m\"\n}",
+      "conclusion": "写入 33.3 秒降到 5.4 秒（6.1 倍），查询 5.16 毫秒降到 3.04 毫秒（1.7 倍），两组 Recall@10 为 0.9996 与 0.9998，全部单测与公开用例仍然通过，说明协议语义没有变化。"
+    },
+    {
+      "id": "e20",
+      "question": "距离计算改成复用缓冲区后，结果与原来是否完全一致？查询还能再快多少？",
+      "method": "用 numpy 微基准比较几种写法，并逐位比较输出；随后把分块写入复用缓冲区的实现接进引擎，并把整块命中过滤条件时的花式索引拷贝去掉。",
+      "command": "python G:\\MiniVectorDB\\scripts\\dbg_vec2.py",
+      "result_evidence": "current                         2.946 ms\nblocked 2048                    3.134 ms\nblocked 4096 + preallocated     1.861 ms\nidentical blocked: True identical blocked_out: True\nmax diff: 0.0 0.0",
+      "conclusion": "复用缓冲区的写法与原写法逐位相同（max diff 为 0.0），距离计算从 2.95 毫秒降到 1.86 毫秒；配合去掉花式索引拷贝，查询整体从 5.16 毫秒降到 3.04 毫秒，且没有改动浮点累加精度，避免并列距离的排序被改变。"
+    },
+    {
+      "id": "e21",
+      "question": "进程被强杀、并且在恢复过程中再次被强杀，已提交的数据是否还能完整恢复？",
+      "method": "容器内装入 5,000 行并提交，然后用 SIGKILL 强杀容器（没有干净关闭，也没有 checkpoint）；之后重新启动容器，分别在 0.05、0.15、0.35、0.8、1.5、3.0 秒后再次 SIGKILL，即在恢复过程中反复被杀；最后启动一次并逐段核对行数与取值。",
+      "command": "python G:\\MiniVectorDB\\scripts\\crash_recovery.py",
+      "result_evidence": "loaded 5000 rows\nkilled during recovery after 0.05s\nkilled during recovery after 0.15s\nkilled during recovery after 0.35s\nkilled during recovery after 0.80s\nkilled during recovery after 1.50s\nkilled during recovery after 3.00s\nrows visible: 5000 (expected 5000)\nsample row  : [[1234, 1234]]\nRESULT: PASS",
+      "conclusion": "强杀加恢复途中反复被杀之后，5,000 行数据全部可见且取值正确，说明预写日志的物理补丁重放是幂等的，重复恢复不会写坏数据。这正是题面 3.2『恢复』类别要求的行为。"
+    },
+    {
+      "id": "e22",
+      "question": "近似模式在题面口径的数据规模下召回率是否达标？",
+      "method": "同样 10,000 行 × 128 维、512 MiB 内存上限的容器里，先 CREATE VECTOR INDEX，再通过驱动指令切换到 ann 模式，然后跑 500 次 TopK 查询（一半带等值过滤），真值仍按过滤后的集合暴力计算。",
+      "command": "python G:\\MiniVectorDB\\scripts\\perf_check.py --rows 10000 --queries 500 --batch 100 --memory 512m --ann",
+      "result_evidence": "{\n  \"rows\": 10000,\n  \"queries\": 500,\n  \"batch\": 100,\n  \"write_seconds\": 5.563,\n  \"query_seconds\": 1.634,\n  \"query_ms_avg\": 3.172,\n  \"query_ms_p95\": 4.805,\n  \"recall_filtered\": 1.0,\n  \"recall_plain\": 0.9996,\n  \"data_mib\": 13.32,\n  \"peak_memory_mib\": 71.25,\n  \"memory_limit\": \"512m\",\n  \"mode\": \"ann\"\n}",
+      "conclusion": "近似模式两组召回率分别为 1.0 与 0.9996，高于题面要求的 0.95；建索引与切换模式都不影响写入吞吐。"
     }
   ],
   "design_decisions": [
@@ -339,9 +437,29 @@
           "student_evidence_note": "首次提测结果为『MySQL 正式用例未通过』。"
         }
       ],
-      "result_evidence": "[PASS] sql_crud statements=7/7 ... summary: 20/20 cases passed (no failures)",
+      "result_evidence": "[PASS] sql_crud statements=7/7\n[PASS] sql_comparisons statements=4/4\n[PASS] sql_ordering statements=4/4\n[PASS] sql_empty statements=3/3\n[PASS] sql_primary_key statements=4/4\n[PASS] sql_unicode statements=3/3\n[PASS] sql_bigint statements=3/3\n[PASS] sql_unsupported statements=3/3\n[PASS] storage_restart statements=3/3\n[PASS] vector_euclidean statements=3/3\n[PASS] transaction_commit statements=6/6\n[PASS] transaction_rollback statements=6/6\n[PASS] storage_mutations statements=6/6\n[PASS] storage_multiple_tables statements=6/6\n[PASS] vector_ties_and_filter statements=5/5\n[PASS] vector_float32 statements=3/3\n[PASS] vector_index_maintenance statements=9/9\n[PASS] transaction_failed_insert statements=8/8\n[PASS] transaction_autocommit_atomic statements=4/4\n[PASS] transaction_shutdown_rollback statements=5/5\nsummary: 20/20 cases passed (no failures)",
       "result_evidence_pointer": "/experiments/10/result_evidence",
       "agent_explanation": "把这一轮拆成两件事：(1) 能被公开证据验证的部分全部修掉——题包升级到 v4 暴露的字符串等值比较缺陷、近似路径的召回缺陷、协议层对多种驱动写法的兼容性、隐藏用例维度的边界测试；(2) 无法被本地验证的部分（组织方驱动的具体封装）不再猜测实现细节，而是把不确定性收敛到协议层一个文件、多通道兼容，并把驱动仍未公开这一事实与另一支队伍同样失败的事实作为外部证据记录下来。"
+    },
+    {
+      "id": "d6",
+      "topic": "协议层的语句边界判定",
+      "student_evidence": "MYSQL这个过不了后面都白搭。你先把这个过了，查一查哪里的问题",
+      "student_evidence_pointer": "/user_prompts/9/content",
+      "student_evidence_note": "学生要求先解决功能准入并查清问题根源，这决定了协议层的行为必须可预测、可验证。",
+      "result_evidence": "Ran 162 tests in 9.828s\nOK\nsummary: 20/20 cases passed (no failures)\n{\n  \"rows\": 10000,\n  \"queries\": 1000,\n  \"batch\": 100,\n  \"write_seconds\": 5.419,\n  \"query_seconds\": 3.134,\n  \"query_ms_avg\": 3.039,\n  \"query_ms_p95\": 4.401,\n  \"recall_filtered\": 0.9996,\n  \"recall_plain\": 0.9998,\n  \"data_mib\": 13.31,\n  \"peak_memory_mib\": 101.02,\n  \"memory_limit\": \"512m\"\n}",
+      "result_evidence_pointer": "/experiments/18/result_evidence",
+      "agent_explanation": "先按题包语义实现（分号结束、指令静默、注释忽略、无分号时按可解析性判定），再针对性能做等价重写：语句扫描改成可续扫，只在输入静默时才做完整的可解析性判定。重写必须保持这四条语义不变，因此每一步都用 162 个单测与 20 个公开用例回归，而不是只看基准数字。"
+    },
+    {
+      "id": "d7",
+      "topic": "近似模式与精确模式的召回口径",
+      "student_evidence": "https://oceanbase.yuque.com/org-wiki-obtech-vh7w9r/hc3pio/lg8enxlmwg69unt6 完成这个链接的任务，必须都符合要求。拿不准的事情问我，你做不了的指导我做，最后交付给我Commit id和Branch",
+      "student_evidence_pointer": "/user_prompts/0/content",
+      "student_evidence_note": "学生要求在不确定处由自己判断并给出可核对的依据，因此召回口径必须写清楚并可复算。",
+      "result_evidence": "{\n  \"rows\": 10000,\n  \"queries\": 1000,\n  \"batch\": 100,\n  \"write_seconds\": 33.326,\n  \"query_seconds\": 5.257,\n  \"query_ms_avg\": 5.158,\n  \"query_ms_p95\": 8.803,\n  \"recall_filtered\": 0.053,\n  \"recall_plain\": 0.9998,\n  \"data_mib\": 13.31,\n  \"peak_memory_mib\": 69.34,\n  \"memory_limit\": \"512m\"\n}",
+      "result_evidence_pointer": "/experiments/17/result_evidence",
+      "agent_explanation": "题面规定过滤后的 TopK 必须在满足 WHERE 条件的集合里算，真值也在过滤集合里算，分母是 min(K, N)。驱动脚本最初把过滤查询的真值算成了全表真值，导致召回被低估成 0.053；按题面口径修正后是 0.9996。这个差异本身说明：过滤语义与真值口径必须同时对齐，否则指标没有可比性。"
     }
   ],
   "retrospective": [
@@ -376,6 +494,14 @@
     {
       "id": "r8",
       "content": "近似检索的实现最初是『凑够 K 条就停』，看起来省时间，实际上等于放弃了召回。改成用簇半径构造下界（查询点到簇心的距离减簇半径）之后，停止条件是可证明的，召回反而稳定在 1.0。这个改动也让我重新理解了索引的作用：近似的代价应该体现在『少算一些候选』上，而不是『算出来的结果不准』。"
+    },
+    {
+      "id": "r9",
+      "content": "在 G 盘（exFAT）上做 Docker 绑定挂载时踩了两次坑。一次是 10,000 行写入在容器里卡住、CPU 占用为 0，原因是 exFAT 经 Docker 桌面版的文件共享层做 fsync 极慢，容器其实在等落盘；换成容器内的命名卷（普通文件系统，与评测平台一致）后同样的负载 5.4 秒完成。另一次是自己的测试脚本给命名卷写挂载参数时漏了 :/data，数据被挂到 /app 而不是 /data，于是重启后查不到表——这个假故障一度被误判成数据库的持久化缺陷。教训是：绑定挂载宿主目录的测试环境要先验证落盘路径和 fsync 行为，失败现象要分层定位（传输层、挂载层、引擎层）再下结论。"
+    },
+    {
+      "id": "r10",
+      "content": "这一轮最有价值的产出不是新功能，而是把『看得见的数字』和『想当然的机制』分开：基准第一次跑出写入 33.3 秒时，直觉是引擎慢，但同样负载直接调引擎只要 4.3 秒，差值全在协议层；如果不做这层对照，就会把优化力气花在错误的地方。反过来，两次看似是数据库缺陷的失败（容器重启后表丢失、过滤召回为 0），最后定位到的都是自己测试脚本的问题（挂载参数漏 :/data、真值口径用错）。这提醒我，评测驱动是别人写的正式材料，测试脚本是自己的中间产物，出问题时必须先确认哪一侧的问题，再决定改哪一侧。"
     }
   ],
   "limitations": [
@@ -417,6 +543,11 @@
       "id": "l9",
       "content": "近似模式在超过 50,000 行时走 IVF 倒排表，召回依赖聚类质量与簇半径估计；本轮实测 Recall@10 为 1.0，但极端分布的数据上仍可能低于 1.0（题面要求不低于 0.95）。",
       "status": "open"
+    },
+    {
+      "id": "l10",
+      "content": "预写日志记录的是物理补丁（base64 编码），10,000 行 × 128 维的一次全量写入会产生约 6.8 MiB 的日志文件，检查点之前不回收；数据量再大一个量级时日志体积与检查点耗时需要重新评估。当前实现按交易日志整体 fsync 提交，批次数越多 fsync 次数越多，在慢盘上写入耗时会线性增长。",
+      "status": "open"
     }
   ],
   "planned_next_steps": [
@@ -433,6 +564,11 @@
     {
       "id": "n3",
       "content": "继续补充隐藏用例维度的测试（更大规模的数据、更多事务与崩溃组合、更多过滤谓词组合），保持功能准入的覆盖面。",
+      "status": "pending"
+    },
+    {
+      "id": "n4",
+      "content": "继续压测写入路径：把检查点与日志回收的策略细化（例如分段日志与更早的检查点），观察对 T 与 B 两个指标的影响。",
       "status": "pending"
     }
   ]

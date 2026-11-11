@@ -27,7 +27,7 @@ import numpy as np
 
 from ..errors import (
     DuplicateKeyError,
-    TransactionStateError,
+    UnsupportedError,
 )
 from .ann import VectorIndex
 from .storage import FileStore, WriteAheadLog, WriteSet
@@ -183,7 +183,10 @@ class Database:
 
     def begin(self) -> None:
         if self.txn is not None:
-            raise TransactionStateError("nested transactions are not supported")
+            # Nested transactions are listed as not supported by the task
+            # statement, so they are reported like the other statements
+            # outside of the supported subset.
+            raise UnsupportedError("nested transactions are not supported")
         self._txn_counter += 1
         self.txn = Transaction(id=self._txn_counter)
 

@@ -117,6 +117,7 @@ class StdinReader(threading.Thread):
         self.eof = False
         self._peeked: Optional[str] = None
         self._peeked_valid = False
+        self._first_chunk = True
 
     def _read_chunk(self) -> str:
         """Read the next piece of input, returning ``""`` at end of file."""
@@ -144,6 +145,15 @@ class StdinReader(threading.Thread):
                     break
                 if isinstance(chunk, bytes):  # pragma: no cover - defensive
                     chunk = decoder.decode(chunk)
+                if self._first_chunk:
+                    self._first_chunk = False
+                    # A driver that pipes through a PowerShell command prepends
+                    # a UTF-8 BOM.  It is an artefact of the transport, not part
+                    # of the statement, so it is dropped instead of turning the
+                    # first statement into a syntax error.
+                    chunk = chunk.lstrip("\ufeff")
+                    if not chunk:
+                        continue
                 self.queue.put(chunk)
         except Exception:  # pragma: no cover - the pipe was closed
             pass
@@ -179,46 +189,105 @@ class StdinReader(threading.Thread):
         return self._peeked_valid or not self.queue.empty()
 
 
+#: The scanner states of :func:`scan_statement_end`.
+_CODE = ("code", "")
+_LINE_COMMENT = ("line", "")
+_BLOCK_COMMENT = ("block", "")
+
+
+def scan_statement_end(
+    text: str, index: int, state: Tuple[str, str]
+) -> Tuple[int, Tuple[str, str]]:
+    """Find the next top level ``;`` in ``text``, starting at ``index``.
+
+    The scan is resumable: the caller keeps ``index`` and ``state`` and calls
+    the function again with the next chunk of input.  A statement that arrives
+    in many chunks is therefore scanned only once, which matters for the large
+    multi row inserts of the performance benchmark.
+
+    String literals and comments are skipped, so a semicolon inside a value
+    does not split the statement.
+
+    Returns ``(end, state)`` where ``end`` is the index just after the
+    semicolon and ``-1`` when the text does not contain one (yet).
+    """
+    length = len(text)
+    while index < length:
+        kind = state[0]
+        char = text[index]
+        if kind == "code":
+            if char == "'" or char == '"':
+                state = ("string", char)
+                index += 1
+                continue
+            if char == "`":
+                state = ("ident", "")
+                index += 1
+                continue
+            if char == "-" and text.startswith("--", index):
+                state = _LINE_COMMENT
+                index += 2
+                continue
+            if char == "#":
+                state = _LINE_COMMENT
+                index += 1
+                continue
+            if char == "/" and text.startswith("/*", index):
+                state = _BLOCK_COMMENT
+                index += 2
+                continue
+            if char == ";":
+                return index + 1, _CODE
+            index += 1
+            continue
+        if kind == "string":
+            quote = state[1]
+            if char == "\\":
+                index += 2
+                continue
+            if char == quote:
+                if text.startswith(quote * 2, index):
+                    index += 2
+                    continue
+                state = _CODE
+                index += 1
+                continue
+            index += 1
+            continue
+        if kind == "ident":
+            if char == "`":
+                if text.startswith("``", index):
+                    index += 2
+                    continue
+                state = _CODE
+                index += 1
+                continue
+            index += 1
+            continue
+        if kind == "line":
+            if char == "\n":
+                state = _CODE
+            index += 1
+            continue
+        # a block comment
+        if char == "*" and text.startswith("*/", index):
+            state = _CODE
+            index += 2
+            continue
+        index += 1
+    return -1, state
+
+
 def find_statement_end(text: str) -> int:
     """Return the index just after the first top level ``;``.
 
     String literals and comments are skipped, so a semicolon inside a value
     does not split the statement.
     """
-    index = 0
-    length = len(text)
-    while index < length:
-        char = text[index]
-        if char == "'":
-            index += 1
-            while index < length:
-                if text[index] == "\\":
-                    index += 2
-                    continue
-                if text[index] == "'":
-                    if index + 1 < length and text[index + 1] == "'":
-                        index += 2
-                        continue
-                    index += 1
-                    break
-                index += 1
-            continue
-        if char == "-" and text.startswith("--", index):
-            end = text.find("\n", index)
-            index = length if end == -1 else end + 1
-            continue
-        if char == "#":
-            end = text.find("\n", index)
-            index = length if end == -1 else end + 1
-            continue
-        if char == "/" and text.startswith("/*", index):
-            end = text.find("*/", index + 2)
-            index = length if end == -1 else end + 2
-            continue
-        if char == ";":
-            return index + 1
-        index += 1
-    return length
+    end, _state = scan_statement_end(text, 0, _CODE)
+    if end < 0:
+        return len(text)
+    return end
 
 
 def _parses(text: str) -> Tuple[bool, bool]:
@@ -259,6 +328,10 @@ class Protocol:
             or os.environ.get("MINIVECTORDB_READY_MARKER", "stdout")
             or "stdout"
         ).strip().lower()
+        #: The position of the resumable statement scan inside the buffer.
+        self._scan_index = 0
+        #: The state of the resumable statement scan at ``_scan_index``.
+        self._scan_state = _CODE
 
     # -- output ---------------------------------------------------------
     def write_result(self, payload: Dict[str, Any]) -> None:
@@ -351,19 +424,32 @@ class Protocol:
            does not use ``;``); it is executed once the input went quiet;
         4. if the buffer does not parse but its first line does, the first line
            is the statement and the rest is kept for the next round.
-        """
-        stripped = buffer.strip()
-        if not stripped:
-            return None, ""
 
+        Deciding whether the buffer is a complete statement costs a full
+        parse, therefore it is only done when the input went quiet.  A driver
+        that streams a large statement into the pipe pays for one parse per
+        statement instead of one per chunk.
+        """
         # 1. the semicolon terminator
-        end = find_statement_end(buffer)
-        if end < len(buffer):
+        end, state = scan_statement_end(buffer, self._scan_index, self._scan_state)
+        if end >= 0:
             statement = buffer[:end]
             remainder = buffer[end:]
+            self._scan_index = 0
+            self._scan_state = _CODE
             if statement.strip():
                 return statement, remainder
             return None, remainder
+        # The whole buffer was scanned and holds no terminator (yet).
+        self._scan_index = len(buffer)
+        self._scan_state = state
+
+        stripped = buffer.strip()
+        if not stripped:
+            # Only whitespace so far, drop it and wait for the statement.
+            self._scan_index = 0
+            self._scan_state = _CODE
+            return None, ""
 
         # 2. driver directives
         if stripped.startswith("--"):
@@ -372,6 +458,8 @@ class Protocol:
                 line = buffer[:newline]
                 remainder = buffer[newline + 1:]
                 self._handle_directive(line.strip())
+                self._scan_index = 0
+                self._scan_state = _CODE
                 return None, remainder
             # No newline yet: a known directive is complete, an unknown one may
             # still be a comment that continues in the next chunk.
@@ -384,19 +472,25 @@ class Protocol:
                 "brute_force",
             ):
                 self._handle_directive(stripped)
+                self._scan_index = 0
+                self._scan_state = _CODE
                 return None, ""
             return None, buffer
 
         # 3. the whole buffer is a statement
+        if not idle:
+            # More input may still complete the statement.  The completeness
+            # check below costs a full parse, so it waits until the input
+            # settles instead of running for every chunk.
+            return None, buffer
         parses, incomplete = _parses(stripped)
         if parses:
-            if not idle:
-                # More input may still complete the statement.
-                return None, buffer
             if self._continues(stripped):
                 # The last line looks like the beginning of a clause, wait for
                 # the rest of the statement.
                 return None, buffer
+            self._scan_index = 0
+            self._scan_state = _CODE
             return stripped, ""
         if incomplete:
             # The statement is not finished yet, read more input.
@@ -409,10 +503,13 @@ class Protocol:
             if first:
                 first_parses, first_incomplete = _parses(first)
                 if first_parses and not first_incomplete:
-                    return first, buffer[newline + 1:]
+                    remainder = buffer[newline + 1:]
+                    self._scan_index = 0
+                    self._scan_state = _CODE
+                    return first, remainder
         # A definite error: report it instead of waiting for more input.
-        if not idle and reader.pending():
-            return None, buffer
+        self._scan_index = 0
+        self._scan_state = _CODE
         return stripped, ""
 
     #: Words that start a clause, i.e. a line that continues a statement.

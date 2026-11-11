@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import math
 import re
-from typing import List, Optional, Sequence, Tuple
+from typing import Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -66,13 +66,51 @@ def format_vector(vector: np.ndarray) -> List[float]:
     return [float(value) for value in np.asarray(vector, dtype=np.float32).tolist()]
 
 
+#: Upper bound for the reusable difference buffer of :func:`l2_distances`.
+_DIFF_BUFFER_BYTES = 8 * 1024 * 1024
+
+#: The reusable difference buffers, keyed by the dimension of the matrix.
+_DIFF_BUFFERS: Dict[int, np.ndarray] = {}
+
+
+def _diff_buffer(rows: int, dim: int) -> np.ndarray:
+    """A reusable float32 buffer for ``rows`` vectors of ``dim`` values."""
+    buffer = _DIFF_BUFFERS.get(dim)
+    if buffer is None or buffer.shape[0] < rows:
+        buffer = np.empty((rows, dim), dtype=np.float32)
+        _DIFF_BUFFERS[dim] = buffer
+    return buffer[:rows]
+
+
 def l2_distances(matrix: np.ndarray, query: np.ndarray) -> np.ndarray:
-    """Euclidean distance between ``query`` and every row of ``matrix``."""
+    """Euclidean distance between ``query`` and every row of ``matrix``.
+
+    The difference matrix is built in blocks inside a reusable buffer.  The
+    result is bit identical to the straightforward computation, but a query
+    does not allocate (and fault in) a new temporary array every time.
+    """
     if matrix.size == 0:
         return np.zeros(0, dtype=np.float64)
-    diff = matrix.astype(np.float32, copy=False) - query.astype(np.float32, copy=False)
-    squared = np.einsum("ij,ij->i", diff, diff, dtype=np.float64)
-    return np.sqrt(squared)
+    query = query.astype(np.float32, copy=False)
+    if matrix.dtype != np.float32:
+        matrix = matrix.astype(np.float32)
+    rows = matrix.shape[0]
+    dim = matrix.shape[1]
+    block = max(1, min(rows, _DIFF_BUFFER_BYTES // max(dim * 4, 1)))
+    squared = np.empty(rows, dtype=np.float64)
+    buffer = _diff_buffer(block, dim)
+    for start in range(0, rows, block):
+        part = matrix[start : start + block]
+        diff = buffer[: part.shape[0]]
+        np.subtract(part, query, out=diff)
+        np.einsum(
+            "ij,ij->i",
+            diff,
+            diff,
+            dtype=np.float64,
+            out=squared[start : start + part.shape[0]],
+        )
+    return np.sqrt(squared, out=squared)
 
 
 def l2_distance(vector: np.ndarray, query: np.ndarray) -> float:

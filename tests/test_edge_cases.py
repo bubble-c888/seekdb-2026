@@ -122,13 +122,53 @@ class RejectedStatementTest(EngineTestCase):
         self.run_sql("CREATE TABLE t (id BIGINT PRIMARY KEY, v BIGINT);")
         self.run_sql("INSERT INTO t VALUES (1, 10);")
         name = self.fails("UPDATE t SET id = 2 WHERE id = 1;")
-        self.assertIn(name, ("unsupported_sql", "transaction_state_error"))
+        self.assertEqual(name, "unsupported_sql")
         self.assertEqual(self.rows("SELECT id, v FROM t;"), [[1, 10]])
 
     def test_null_values_are_rejected(self) -> None:
         self.run_sql("CREATE TABLE t (id BIGINT PRIMARY KEY, v BIGINT);")
-        self.assertTrue(self.fails("INSERT INTO t VALUES (1, NULL);"))
+        self.assertEqual(self.fails("INSERT INTO t VALUES (1, NULL);"), "unsupported_sql")
         self.assertEqual(self.rows("SELECT id FROM t;"), [])
+
+    def test_foreign_keys_are_rejected(self) -> None:
+        # The task statement lists foreign keys as not supported, so they are
+        # reported as an unsupported statement and not as a malformed one.
+        self.assertEqual(
+            self.fails(
+                "CREATE TABLE child (id BIGINT PRIMARY KEY, p BIGINT, "
+                "FOREIGN KEY (p) REFERENCES parent(id));"
+            ),
+            "unsupported_sql",
+        )
+        self.assertEqual(
+            self.fails(
+                "CREATE TABLE child (id BIGINT PRIMARY KEY, p BIGINT REFERENCES parent(id));"
+            ),
+            "unsupported_sql",
+        )
+
+    def test_bigint_overflow_is_reported_as_a_value_error(self) -> None:
+        self.run_sql("CREATE TABLE t (id BIGINT PRIMARY KEY);")
+        self.assertEqual(
+            self.fails("INSERT INTO t VALUES (9223372036854775808);"),
+            "value_out_of_range",
+        )
+        self.assertEqual(
+            self.fails("INSERT INTO t VALUES (-9223372036854775809);"),
+            "value_out_of_range",
+        )
+        self.assertEqual(
+            self.fails("INSERT INTO t VALUES (99999999999999999999999);"),
+            "value_out_of_range",
+        )
+        self.assertEqual(self.rows("SELECT id FROM t;"), [])
+        # The boundaries themselves are still valid.
+        self.run_sql("INSERT INTO t VALUES (9223372036854775807);")
+        self.run_sql("INSERT INTO t VALUES (-9223372036854775808);")
+        self.assertEqual(
+            self.rows("SELECT id FROM t;"),
+            [[9223372036854775807], [-9223372036854775808]],
+        )
 
     def test_wrong_number_of_values_is_rejected(self) -> None:
         self.run_sql("CREATE TABLE t (id BIGINT PRIMARY KEY, v BIGINT);")
@@ -138,7 +178,7 @@ class RejectedStatementTest(EngineTestCase):
 
     def test_second_explicit_transaction_is_rejected(self) -> None:
         self.run_sql("BEGIN;")
-        self.assertTrue(self.fails("BEGIN;"))
+        self.assertEqual(self.fails("BEGIN;"), "unsupported_sql")
         self.run_sql("ROLLBACK;")
 
     def test_commit_without_a_transaction_is_accepted(self) -> None:
@@ -473,6 +513,29 @@ class ProtocolTest(unittest.TestCase):
     def test_a_comment_is_not_answered(self) -> None:
         answers = self._talk("-- a comment\nSELECT 1;\n")
         self.assertEqual(len(answers), 1)
+
+    def test_a_utf8_bom_does_not_break_the_first_statement(self) -> None:
+        # A driver that pipes the input through a PowerShell command prepends a
+        # byte order mark.  It belongs to the transport, not to the statement.
+        environment = os.environ.copy()
+        environment["PYTHONPATH"] = str(REPO_ROOT)
+        environment["PYTHONIOENCODING"] = "utf-8"
+        environment["PYTHONUNBUFFERED"] = "1"
+        process = subprocess.run(
+            [sys.executable, "-m", "minivectordb", "--data-dir", str(self.data_dir)],
+            input=b"\xef\xbb\xbfCREATE TABLE t (id BIGINT PRIMARY KEY);\n",
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            timeout=120,
+            cwd=str(REPO_ROOT),
+            env=environment,
+        )
+        self.assertEqual(process.returncode, 0, process.stderr.decode("utf-8", "replace"))
+        lines = [
+            line for line in process.stdout.decode("utf-8").splitlines() if line.strip()
+        ]
+        self.assertEqual(len(lines), 1)
+        self.assertEqual(json.loads(lines[0]), {})
 
     def test_stdout_carries_only_results(self) -> None:
         environment = os.environ.copy()

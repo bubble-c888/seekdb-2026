@@ -1,5 +1,8 @@
 name: MiniVectorDB preflight
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+  push:
+    branches: [minivectordb-local-validation]
 permissions:
   contents: read
 jobs:

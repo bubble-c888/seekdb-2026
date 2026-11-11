@@ -1,0 +1,27 @@
+name: MiniVectorDB preflight
+on:
+  workflow_dispatch:
+  push:
+    branches: [minivectordb-local-validation, round2-integration-validation, 2026-competition-round2]
+permissions:
+  contents: read
+jobs:
+  docker-public:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build submitted source
+        run: docker build -t minivectordb:preflight .
+      - name: Official handshake
+        run: python3 protocol_check/run.py --image minivectordb:preflight --handshake-only --output protocol-results/handshake
+      - name: Official public SQL
+        run: python3 protocol_check/run.py --image minivectordb:preflight --output protocol-results/public
+      - name: Independent Linux recovery and TopK checks
+        run: python3 check_recovery.py
+      - name: Retain preflight logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: minivectordb-preflight
+          path: protocol-results/

@@ -1,3 +1,7 @@
+# MiniVectorDB current implementation
+
+See [MINIVECTORDB.md](MINIVECTORDB.md) for the current entry point, storage design, build instructions and known limits. Docker runs main.py. The pre-existing engine.py, storage.py, vector_index.py and minivectordb/ remain as historical implementations and are not imported by the current service.
+
 # MiniVectorDB
 
 The database runs as a single Python 3.12 process in a Linux x86_64 container. It uses only the Python standard library.

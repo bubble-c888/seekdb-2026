@@ -393,19 +393,34 @@ class ProtocolTest(unittest.TestCase):
         shutil.rmtree(self.data_dir, ignore_errors=True)
 
     def talk(self, statements, data_dir=None):
+        """Send the statements as JSONL requests and return the responses.
+
+        The task package speaks JSON Lines: the program announces itself with
+        ``{"type": "ready"}`` and answers every request with one object that
+        repeats the request id and carries the boolean ``ok``.
+        """
         env = dict(os.environ)
         env["PYTHONPATH"] = str(REPO_ROOT)
-        env["MINIVECTORDB_READY_MARKER"] = "none"
+        env["PYTHONIOENCODING"] = "utf-8"
+        requests = [
+            json.dumps({"id": number, "op": "execute", "sql": sql})
+            for number, sql in enumerate(statements, 1)
+        ]
         process = subprocess.run(
             [sys.executable, "-m", "minivectordb", "--data-dir", str(data_dir or self.data_dir)],
-            input="\n".join(statements) + "\n",
+            input="\n".join(requests) + "\n",
             capture_output=True,
             text=True,
+            encoding="utf-8",
             env=env,
             timeout=120,
         )
         self.assertEqual(process.returncode, 0, process.stderr)
-        return [json.loads(line) for line in process.stdout.splitlines() if line.strip()]
+        messages = [
+            json.loads(line) for line in process.stdout.splitlines() if line.strip()
+        ]
+        self.assertEqual(messages[0], {"type": "ready"})
+        return messages[1:]
 
     def test_one_json_object_per_statement(self) -> None:
         answers = self.talk(
@@ -416,8 +431,17 @@ class ProtocolTest(unittest.TestCase):
             ]
         )
         self.assertEqual(len(answers), 3)
-        self.assertEqual(answers[1], {"affected_rows": 1})
-        self.assertEqual(answers[2], {"columns": ["id", "v"], "rows": [[1, 2]]})
+        self.assertEqual(
+            [answer["id"] for answer in answers], [1, 2, 3]
+        )
+        self.assertTrue(all(answer["ok"] is True for answer in answers))
+        self.assertEqual(
+            answers[1], {"id": 2, "ok": True, "affected_rows": 1}
+        )
+        self.assertEqual(
+            answers[2],
+            {"id": 3, "ok": True, "columns": ["id", "v"], "rows": [[1, 2]]},
+        )
 
     def test_errors_are_reported_without_crashing(self) -> None:
         answers = self.talk(
@@ -431,6 +455,8 @@ class ProtocolTest(unittest.TestCase):
         self.assertEqual(len(answers), 4)
         self.assertIn("error", answers[0])
         self.assertIn("error", answers[1])
+        self.assertIs(answers[0]["ok"], False)
+        self.assertTrue(answers[0]["error"]["code"])
         self.assertEqual(answers[3]["rows"], [])
 
     def test_state_survives_a_restart_of_the_process(self) -> None:

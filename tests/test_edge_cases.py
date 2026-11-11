@@ -405,12 +405,20 @@ class CrashRecoveryTest(unittest.TestCase):
         )
         try:
             process.stdin.write(
-                "CREATE TABLE t (id BIGINT PRIMARY KEY, v BIGINT);\n"
-                "INSERT INTO t VALUES (1, 10);\n"
+                json.dumps(
+                    {"id": 1, "op": "execute", "sql": "CREATE TABLE t (id BIGINT PRIMARY KEY, v BIGINT);"}
+                )
+                + "\n"
+                + json.dumps(
+                    {"id": 2, "op": "execute", "sql": "INSERT INTO t VALUES (1, 10);"}
+                )
+                + "\n"
             )
             process.stdin.flush()
-            answers = [process.stdout.readline() for _ in range(2)]
-            self.assertEqual(json.loads(answers[1]), {"affected_rows": 1})
+            ready = json.loads(process.stdout.readline())
+            self.assertEqual(ready, {"type": "ready"})
+            answers = [json.loads(process.stdout.readline()) for _ in range(2)]
+            self.assertEqual(answers[1], {"id": 2, "ok": True, "affected_rows": 1})
             # The commit is durable: the process dies without any shutdown.
             process.kill()
             process.wait(timeout=30)
@@ -443,13 +451,24 @@ class CrashRecoveryTest(unittest.TestCase):
         )
         try:
             process.stdin.write(
-                "CREATE TABLE t (id BIGINT PRIMARY KEY, v BIGINT);\n"
-                "INSERT INTO t VALUES (1, 10);\n"
-                "BEGIN;\n"
-                "INSERT INTO t VALUES (2, 20);\n"
+                json.dumps(
+                    {"id": 1, "op": "execute", "sql": "CREATE TABLE t (id BIGINT PRIMARY KEY, v BIGINT);"}
+                )
+                + "\n"
+                + json.dumps(
+                    {"id": 2, "op": "execute", "sql": "INSERT INTO t VALUES (1, 10);"}
+                )
+                + "\n"
+                + json.dumps({"id": 3, "op": "execute", "sql": "BEGIN;"})
+                + "\n"
+                + json.dumps(
+                    {"id": 4, "op": "execute", "sql": "INSERT INTO t VALUES (2, 20);"}
+                )
+                + "\n"
             )
             process.stdin.flush()
-            for _ in range(4):
+            # The handshake plus the four answers.
+            for _ in range(5):
                 process.stdout.readline()
             process.kill()
             process.wait(timeout=30)
@@ -495,35 +514,55 @@ class ProtocolTest(unittest.TestCase):
         self.assertEqual(process.returncode, 0, process.stderr)
         return [json.loads(line) for line in process.stdout.splitlines() if line.strip()]
 
-    def test_a_statement_without_a_newline_is_answered(self) -> None:
-        answers = self._talk("SELECT 1;")
-        self.assertEqual(len(answers), 1)
+    @staticmethod
+    def _request(number: int, sql: str, **extra) -> str:
+        payload = {"id": number, "op": "execute", "sql": sql}
+        payload.update(extra)
+        return json.dumps(payload)
+
+    def test_a_request_without_a_newline_is_answered(self) -> None:
+        answers = self._talk(self._request(1, "CREATE TABLE t (id BIGINT PRIMARY KEY);"))
+        self.assertEqual(len(answers), 2)
+        self.assertEqual(answers[0], {"type": "ready"})
+        self.assertEqual(answers[1], {"id": 1, "ok": True})
 
     def test_a_statement_without_a_semicolon_is_answered(self) -> None:
-        answers = self._talk("CREATE TABLE t (id BIGINT PRIMARY KEY);\nSELECT id FROM t")
-        self.assertEqual(len(answers), 2)
-        self.assertEqual(answers[1], {"columns": ["id"], "rows": []})
-
-    def test_a_directive_is_not_answered(self) -> None:
         answers = self._talk(
-            "CREATE TABLE t (id BIGINT PRIMARY KEY);\n--mode ann\nSELECT id FROM t;\n"
+            self._request(1, "CREATE TABLE t (id BIGINT PRIMARY KEY);")
+            + "\n"
+            + self._request(2, "SELECT id FROM t")
         )
+        self.assertEqual(len(answers), 3)
+        self.assertEqual(
+            answers[2], {"id": 2, "ok": True, "columns": ["id"], "rows": []}
+        )
+
+    def test_the_search_mode_does_not_consume_a_response(self) -> None:
+        answers = self._talk(
+            self._request(1, "SELECT 1;", search_mode="ann") + "\n"
+            + self._request(2, "SELECT 1;", search_mode="exact")
+        )
+        self.assertEqual(len(answers), 3)
+        self.assertEqual(answers[1]["id"], 1)
+        self.assertEqual(answers[2]["id"], 2)
+
+    def test_an_unknown_operation_is_reported(self) -> None:
+        answers = self._talk(json.dumps({"id": 7, "op": "explode"}))
         self.assertEqual(len(answers), 2)
+        self.assertIs(answers[1]["ok"], False)
+        self.assertTrue(answers[1]["error"]["code"])
 
-    def test_a_comment_is_not_answered(self) -> None:
-        answers = self._talk("-- a comment\nSELECT 1;\n")
-        self.assertEqual(len(answers), 1)
-
-    def test_a_utf8_bom_does_not_break_the_first_statement(self) -> None:
+    def test_a_utf8_bom_does_not_break_the_first_request(self) -> None:
         # A driver that pipes the input through a PowerShell command prepends a
-        # byte order mark.  It belongs to the transport, not to the statement.
+        # byte order mark.  It belongs to the transport, not to the request.
         environment = os.environ.copy()
         environment["PYTHONPATH"] = str(REPO_ROOT)
         environment["PYTHONIOENCODING"] = "utf-8"
         environment["PYTHONUNBUFFERED"] = "1"
+        request = self._request(1, "CREATE TABLE t (id BIGINT PRIMARY KEY);")
         process = subprocess.run(
             [sys.executable, "-m", "minivectordb", "--data-dir", str(self.data_dir)],
-            input=b"\xef\xbb\xbfCREATE TABLE t (id BIGINT PRIMARY KEY);\n",
+            input=b"\xef\xbb\xbf" + request.encode("utf-8") + b"\n",
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             timeout=120,
@@ -534,16 +573,17 @@ class ProtocolTest(unittest.TestCase):
         lines = [
             line for line in process.stdout.decode("utf-8").splitlines() if line.strip()
         ]
-        self.assertEqual(len(lines), 1)
-        self.assertEqual(json.loads(lines[0]), {})
+        self.assertEqual(len(lines), 2)
+        self.assertEqual(json.loads(lines[0]), {"type": "ready"})
+        self.assertEqual(json.loads(lines[1]), {"id": 1, "ok": True})
 
-    def test_stdout_carries_only_results(self) -> None:
+    def test_stdout_carries_only_protocol_messages(self) -> None:
         environment = os.environ.copy()
         environment["PYTHONPATH"] = str(REPO_ROOT)
         environment["PYTHONUNBUFFERED"] = "1"
         process = subprocess.run(
             [sys.executable, "-m", "minivectordb", "--data-dir", str(self.data_dir)],
-            input="SELECT 1;\n",
+            input=self._request(1, "CREATE TABLE t (id BIGINT PRIMARY KEY);") + "\n",
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
@@ -554,8 +594,9 @@ class ProtocolTest(unittest.TestCase):
         )
         self.assertEqual(process.returncode, 0, process.stderr)
         lines = [line for line in process.stdout.splitlines() if line.strip()]
-        self.assertEqual(len(lines), 1)
-        json.loads(lines[0])
+        self.assertEqual(len(lines), 2)
+        for line in lines:
+            json.loads(line)
 
 
 if __name__ == "__main__":

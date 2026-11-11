@@ -3,10 +3,11 @@
 
 The test drives ``tools/run_case.py`` against a tiny fake database program that
 is written to a temporary file on the fly.  The fake only implements the
-response protocol (one JSON line per statement, clean exit on EOF); it is NOT a
-database.  This proves the harness itself (process launch, statement feeding,
-line-by-line reading, comparison, exit status handling) without depending on
-the real MiniVectorDB engine.
+protocol of the task package (the ``{"type":"ready"}`` handshake, one JSON
+answer per ``execute`` request, a clean exit on ``shutdown``); it is NOT a
+database.  This proves the harness itself (process launch, handshake, request
+feeding, line-by-line reading, comparison, timeout and exit status handling)
+without depending on the real MiniVectorDB engine.
 """
 
 import json
@@ -21,7 +22,7 @@ _REPO_ROOT = Path(__file__).resolve().parents[1]
 _TOOLS = _REPO_ROOT / "tools"
 _CASES = _REPO_ROOT / "mysqltest" / "cases"
 
-FAKE_PROGRAM_TEMPLATE = '''\
+FAKE_PROGRAM_TEMPLATE = '''
 import json
 import sys
 
@@ -30,15 +31,31 @@ RESPONSES = __PAYLOAD__
 sys.stdout.reconfigure(encoding="utf-8")
 sys.stderr.reconfigure(encoding="utf-8")
 
+sys.stdout.write(json.dumps({"type": "ready"}) + "\\n")
+sys.stdout.flush()
 sys.stderr.write("fake-db: diagnostics belong on stderr\\n")
 sys.stderr.flush()
 
 for _line in sys.stdin:
+    _line = _line.strip()
+    if not _line:
+        continue
+    try:
+        _request = json.loads(_line)
+    except ValueError:
+        continue
+    _id = _request.get("id")
+    if _request.get("op") == "shutdown":
+        sys.stdout.write(json.dumps({"id": _id, "ok": True}) + "\\n")
+        sys.stdout.flush()
+        break
     if RESPONSES:
-        response = RESPONSES.pop(0)
+        _payload = RESPONSES.pop(0)
     else:
-        response = {"error": "no canned response", "code": 1064, "sqlstate": "42000"}
-    sys.stdout.write(json.dumps(response, ensure_ascii=False) + "\\n")
+        _payload = {"error": {"code": "no_canned_response", "message": "no canned response"}}
+    _response = {"id": _id, "ok": True}
+    _response.update(_payload)
+    sys.stdout.write(json.dumps(_response, ensure_ascii=False) + "\\n")
     sys.stdout.flush()
 '''
 
@@ -70,8 +87,6 @@ class HarnessSmokeTest(unittest.TestCase):
             "sql_crud",
             "--program",
             program,
-            "--data-dir",
-            str(self.work / "cases"),
             "--timeout",
             "20",
         ]
@@ -99,7 +114,7 @@ class HarnessSmokeTest(unittest.TestCase):
             ),
         )
         self.assertIn("[PASS] sql_crud", completed.stdout)
-        self.assertIn("statements=7/7", completed.stdout)
+        self.assertIn("statements=7", completed.stdout)
         self.assertIn("summary: 1/1 cases passed", completed.stdout)
 
     def test_mismatching_response_is_reported(self):
@@ -112,11 +127,8 @@ class HarnessSmokeTest(unittest.TestCase):
         )
         self.assertEqual(completed.returncode, 1, msg=completed.stdout)
         self.assertIn("[FAIL] sql_crud", completed.stdout)
-        self.assertIn("statement #3", completed.stdout)
-        self.assertIn("row 0 mismatch", completed.stdout)
-        self.assertIn("column 1 mismatch", completed.stdout)
-        self.assertIn("expected:", completed.stdout)
-        self.assertIn("actual:", completed.stdout)
+        self.assertIn("statement 3", completed.stdout)
+        self.assertIn("rows:", completed.stdout)
         self.assertIn("summary: 0/1 cases passed", completed.stdout)
 
     def test_verbose_prints_statements(self):
@@ -126,7 +138,7 @@ class HarnessSmokeTest(unittest.TestCase):
         )
         self.assertEqual(completed.returncode, 0, msg=completed.stdout)
         self.assertIn("--- statement #1: CREATE TABLE docs", completed.stdout)
-        self.assertIn("expected:", completed.stdout)
+        self.assertIn("--- answer #1:", completed.stdout)
 
     def test_program_that_exits_early_fails_the_case(self):
         script = self.work / "broken_db.py"
@@ -145,6 +157,8 @@ class HarnessSmokeTest(unittest.TestCase):
         script = self.work / "slow_db.py"
         script.write_text(
             "import sys\n"
+            "sys.stdout.write('{\"type\":\"ready\"}\\n')\n"
+            "sys.stdout.flush()\n"
             "for line in sys.stdin:\n"
             "    pass\n",
             encoding="utf-8",
@@ -172,7 +186,7 @@ class HarnessSmokeTest(unittest.TestCase):
             timeout=60,
         )
         self.assertEqual(completed.returncode, 2)
-        self.assertIn("unknown case", completed.stderr)
+        self.assertIn("unknown public case", completed.stderr)
 
 
 if __name__ == "__main__":

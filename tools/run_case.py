@@ -1,28 +1,29 @@
 #!/usr/bin/env python3
-"""Local self-test harness for the MiniVectorDB public mysqltest cases.
+"""Local self-test harness for the public mysqltest cases.
 
-Every case in ``mysqltest/manifest.json`` is executed against a FRESH, EMPTY
-data directory: the database program is started, fed the items of the ``.test``
-file and every response line is compared with the matching entry of the
-``.result`` array.
+The harness speaks the JSON Lines protocol of the task package (see
+``STDIO_PROTOCOL.md``) and compares the responses with the assertions of the
+``.result`` files **using the assertion code of the task package**
+(``protocol_check/_assertions.py``), so that the local verdict and the verdict
+of the judge use the same rules.
 
-The ``.test`` files of the task package contain two kinds of items:
+Every case runs against a fresh, empty data directory:
 
-* a SQL statement -- it produces exactly one response line and therefore
-  occupies exactly one position in the ``.result`` array;
-* a driver directive (``--restart``, ``--mode ann``, comments) -- it does not
-  produce a response and does not occupy an assertion position.
-
-``--restart`` closes stdin, waits for the program to exit and starts it again
-with the same data directory, exactly like the organiser describes it.
+* the program is started and the ``{"type":"ready"}`` handshake is read;
+* every statement of the ``.test`` file becomes one ``execute`` request;
+* ``--restart`` shuts the program down, waits for the exit and starts it again
+  with the same data directory;
+* ``--mode ann`` / ``--mode exact`` change the ``search_mode`` of the
+  following requests;
+* the program is shut down at the end, the exit code and the rest of stdout
+  are checked.
 
 Usage examples::
 
     python tools/run_case.py                      # run every case
     python tools/run_case.py --case sql_crud      # run a single case
-    python tools/run_case.py --data-dir .tmp/cases
     python tools/run_case.py --program "python -m minivectordb --data-dir <datadir>"
-    python tools/run_case.py --keep --verbose
+    python tools/run_case.py --verbose
 
 Exit status is 0 only when every selected case passes.
 """
@@ -41,32 +42,32 @@ import tempfile
 import threading
 import time
 from pathlib import Path
-from typing import Any, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
+
+# The judge compares the answers on Linux; the local harness runs on Windows as
+# well, where the console code page would mangle the Chinese messages.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
+    except (AttributeError, ValueError):  # pragma: no cover - defensive
+        pass
 
 _HERE = Path(__file__).resolve().parent
 _REPO_ROOT = _HERE.parent
-if str(_HERE) not in sys.path:
-    sys.path.insert(0, str(_HERE))
+sys.path.insert(0, str(_REPO_ROOT / "protocol_check"))
 
-from compare import compare_result  # noqa: E402  (local module, path fixed above)
+from _assertions import assert_response  # noqa: E402  (task package module)
 
 DEFAULT_PROGRAM = "{} -m minivectordb --data-dir <datadir>".format(sys.executable)
-DEFAULT_TIMEOUT = 30.0
-SHUTDOWN_TIMEOUT = 15.0
-STDERR_TAIL_LINES = 40
-
-#: Directives that make the harness restart the program.
-RESTART_DIRECTIVES = ("restart", "reopen")
+DEFAULT_TIMEOUT = 60.0
+READY_MESSAGE = {"type": "ready"}
 
 
-# --------------------------------------------------------------------------
-# small helpers
-# --------------------------------------------------------------------------
 def split_command(command: str) -> List[str]:
     """Split a command line into argv.
 
-    ``shlex`` in POSIX mode eats Windows backslashes, so the non-POSIX lexer is
-    used and matching quotes are stripped afterwards.
+    ``shlex`` in POSIX mode eats Windows backslashes, so the non-POSIX lexer
+    is used and matching quotes are stripped afterwards.
     """
     lexer = shlex.shlex(command, posix=False)
     lexer.whitespace_split = True
@@ -79,738 +80,264 @@ def split_command(command: str) -> List[str]:
     return tokens
 
 
-def build_command(program: str, data_dir: Path) -> List[str]:
-    """Build the argv of the database program for one case."""
-    tokens = split_command(program)
-    if not tokens:
-        raise ValueError("empty program command")
-    return [token.replace("<datadir>", str(data_dir)) for token in tokens]
-
-
-def format_command(tokens: Sequence[str]) -> str:
-    """Render an argv as a copy/pasteable command line."""
-    return " ".join(
-        '"{}"'.format(token) if " " in token else token for token in tokens
-    )
-
-
-def format_value(value: Any) -> str:
-    """Render a value as indented JSON."""
-    try:
-        return json.dumps(value, ensure_ascii=False, indent=2, sort_keys=False)
-    except (TypeError, ValueError):
-        return repr(value)
-
-
-def stderr_tail(lines: Sequence[str], limit: int = STDERR_TAIL_LINES) -> str:
-    """Return the tail of the captured stderr output."""
-    tail = list(lines)[-limit:]
-    return "".join(tail).rstrip()
-
-
-# --------------------------------------------------------------------------
-# case loading
-# --------------------------------------------------------------------------
-class Case:
-    """One public mysqltest case."""
-
-    def __init__(self, case_id: str, group: str, statements: int, test_file: Path, result_file: Path):
-        self.case_id = case_id
-        self.group = group
-        self.declared_statements = statements
-        self.test_file = test_file
-        self.result_file = result_file
-
-
-def load_cases(cases_dir: Path) -> List[Case]:
-    """Load the case list from ``manifest.json``."""
-    manifest_path = cases_dir / "manifest.json"
-    if not manifest_path.is_file():
-        raise SystemExit("manifest not found: {}".format(manifest_path))
-    with manifest_path.open("r", encoding="utf-8") as handle:
-        manifest = json.load(handle)
-    cases = []
-    for entry in manifest.get("cases", []):
-        case_id = entry["id"]
-        cases.append(
-            Case(
-                case_id=case_id,
-                group=entry.get("group", ""),
-                statements=int(entry.get("statements", 0)),
-                test_file=cases_dir / "cases" / "{}.test".format(case_id),
-                result_file=cases_dir / "cases" / "{}.result".format(case_id),
-            )
-        )
-    return cases
-
-
-def read_statements(test_file: Path) -> List[str]:
-    """Read the statements of a ``.test`` file: one item per non-empty line."""
-    with test_file.open("r", encoding="utf-8") as handle:
-        return [line.strip() for line in handle.read().splitlines() if line.strip()]
-
-
-def read_items(test_file: Path) -> List[Tuple[str, str]]:
-    """Read a ``.test`` file as a list of ``(kind, text)`` items.
-
-    ``kind`` is ``"sql"`` for a statement and ``"directive"`` for a driver
-    instruction such as ``--restart`` or ``--mode ann``.  Only the statements
-    occupy a position in the ``.result`` file.
-    """
-    items: List[Tuple[str, str]] = []
-    for line in read_statements(test_file):
-        if line.startswith("--"):
-            items.append(("directive", line))
-        else:
-            items.append(("sql", line))
-    return items
-
-
-def read_expectations(result_file: Path) -> List[dict]:
-    """Read the expected assertion objects of a ``.result`` file."""
-    with result_file.open("r", encoding="utf-8") as handle:
-        payload = json.load(handle)
-    if not isinstance(payload, list):
-        raise SystemExit("result file is not a JSON array: {}".format(result_file))
-    return payload
-
-
-# --------------------------------------------------------------------------
-# running one case
-# --------------------------------------------------------------------------
-class Failure:
-    """One recorded failure inside a case."""
-
-    def __init__(self, message: str, statement_index: Optional[int] = None,
-                 sql: Optional[str] = None, expected: Any = None,
-                 actual: Any = None, problems: Optional[Sequence[str]] = None):
-        self.message = message
-        self.statement_index = statement_index
-        self.sql = sql
-        self.expected = expected
-        self.actual = actual
-        self.problems = list(problems or [])
-
-
-class CaseResult:
-    """Outcome of one case."""
-
-    def __init__(self, case_id: str):
-        self.case_id = case_id
-        self.passed = False
-        self.total = 0
-        self.checked = 0
-        self.failures: List[Failure] = []
-        self.duration = 0.0
-        self.stderr = ""
-
-
-def _pump_stdout(stream, out_queue: "queue.Queue", errors: List[str]) -> None:
-    """Forward stdout lines to a queue; push ``None`` on EOF."""
-    try:
-        for line in stream:
-            if "\ufffd" in line and not errors:
-                errors.append(
-                    "the response stream contains bytes that are not valid UTF-8. "
-                    "The database program must write UTF-8 encoded JSON on stdout."
-                )
-            out_queue.put(line)
-    except Exception as exc:  # pragma: no cover - defensive
-        errors.append("cannot read the response stream: {}".format(exc))
-    finally:
-        out_queue.put(None)
-
-
-def _pump_stderr(stream, sink: List[str]) -> None:
-    """Drain stderr continuously so the child never blocks on a full pipe."""
-    try:
-        for line in stream:
-            sink.append(line)
-    except Exception:  # pragma: no cover - defensive
-        pass
-
-
 class Program:
-    """One run of the database program together with its pipes."""
+    """The database program under test.
 
-    def __init__(self, command: Sequence[str], environment: dict, cwd: str):
-        self.command = list(command)
-        self.environment = environment
-        self.cwd = cwd
+    stdout and stderr are drained by two threads, so that a program that
+    writes a lot of diagnostics cannot block, and so that the harness can
+    apply its own timeout to every single answer.
+    """
+
+    def __init__(self, argv: Sequence[str], cwd: Optional[Path] = None):
+        self.argv = list(argv)
+        self.cwd = str(cwd) if cwd else None
         self.process: Optional[subprocess.Popen] = None
-        self.stdout_queue: "queue.Queue" = queue.Queue()
         self.stderr_lines: List[str] = []
-        self.stdout_errors: List[str] = []
-        self._stdout_thread: Optional[threading.Thread] = None
-        self._stderr_thread: Optional[threading.Thread] = None
+        self.sequence = 0
+        self.timeout = DEFAULT_TIMEOUT
+        self._lines: "queue.Queue[Optional[bytes]]" = queue.Queue()
+        self._reader: Optional[threading.Thread] = None
+        self._error_reader: Optional[threading.Thread] = None
 
-    # -- lifecycle ------------------------------------------------------
+    # -- process --------------------------------------------------------
     def start(self) -> None:
+        environment = dict(os.environ)
+        # The protocol is UTF-8; the console code page of a Windows host must
+        # not decide how the answers are encoded.
+        environment["PYTHONIOENCODING"] = "utf-8"
+        environment.setdefault("PYTHONUNBUFFERED", "1")
         self.process = subprocess.Popen(
-            self.command,
+            self.argv,
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            bufsize=1,
             cwd=self.cwd,
-            env=self.environment,
+            bufsize=0,
+            env=environment,
         )
-        self.stdout_queue = queue.Queue()
+        self._lines = queue.Queue()
         self.stderr_lines = []
-        self.stdout_errors = []
-        self._stdout_thread = threading.Thread(
-            target=_pump_stdout,
-            args=(self.process.stdout, self.stdout_queue, self.stdout_errors),
-            daemon=True,
-        )
-        self._stderr_thread = threading.Thread(
-            target=_pump_stderr, args=(self.process.stderr, self.stderr_lines), daemon=True
-        )
-        self._stdout_thread.start()
-        self._stderr_thread.start()
+        self._reader = threading.Thread(target=self._drain_stdout, daemon=True)
+        self._reader.start()
+        self._error_reader = threading.Thread(target=self._drain_stderr, daemon=True)
+        self._error_reader.start()
 
-    def send(self, text: str) -> None:
-        assert self.process is not None
-        self.process.stdin.write(text + "\n")
+    def _drain_stdout(self) -> None:
+        stream = self.process.stdout if self.process else None
+        if stream is None:  # pragma: no cover - defensive
+            return
+        try:
+            for line in stream:
+                self._lines.put(line)
+        except Exception:  # pragma: no cover - defensive
+            pass
+        self._lines.put(None)
+
+    def _drain_stderr(self) -> None:
+        stream = self.process.stderr if self.process else None
+        if stream is None:  # pragma: no cover - defensive
+            return
+        try:
+            for line in stream:
+                self.stderr_lines.append(line.decode("utf-8", "replace").rstrip("\n"))
+        except Exception:  # pragma: no cover - defensive
+            pass
+
+    # -- messages -------------------------------------------------------
+    def read_line(self, timeout: Optional[float] = None) -> str:
+        """Wait for one line of stdout."""
+        limit = self.timeout if timeout is None else timeout
+        try:
+            line = self._lines.get(timeout=limit)
+        except queue.Empty:
+            raise TimeoutError(
+                "timeout after {:.1f}s while waiting for an answer".format(limit)
+            )
+        if line is None:
+            raise RuntimeError(
+                "the program exited before the answer; stderr:\n" + self.stderr_tail()
+            )
+        return line.decode("utf-8")
+
+    def send(self, request: Dict[str, Any]) -> None:
+        assert self.process is not None and self.process.stdin is not None
+        data = json.dumps(request, ensure_ascii=False, allow_nan=False) + "\n"
+        self.process.stdin.write(data.encode("utf-8"))
         self.process.stdin.flush()
 
-    def read_line(self, timeout: float) -> Optional[str]:
-        """Return the next response line, ``None`` on EOF and ``TIMEOUT`` on timeout."""
-        try:
-            return self.stdout_queue.get(timeout=timeout)
-        except queue.Empty:
-            return TIMEOUT
+    def request(
+        self, sql: Optional[str], mode: str = "exact", op: str = "execute"
+    ) -> Dict[str, Any]:
+        self.sequence += 1
+        payload: Dict[str, Any] = {"id": self.sequence, "op": op}
+        if sql is not None:
+            payload["sql"] = sql
+            payload["search_mode"] = mode
+        self.send(payload)
+        response = json.loads(self.read_line())
+        if response.get("id") != payload["id"]:
+            raise RuntimeError("the response id does not match the request")
+        if not isinstance(response.get("ok"), bool):
+            raise RuntimeError("the response has no boolean ok")
+        return response
 
-    def close_stdin(self) -> None:
-        if self.process is None or self.process.stdin is None:
-            return
-        try:
-            if not self.process.stdin.closed:
-                self.process.stdin.close()
-        except Exception:  # pragma: no cover - defensive
-            pass
-
-    def wait(self, timeout: float) -> Optional[int]:
-        if self.process is None:
-            return None
-        try:
-            return self.process.wait(timeout=timeout)
-        except subprocess.TimeoutExpired:
-            return None
-
-    def kill(self) -> None:
-        if self.process is None:
-            return
-        try:
-            self.process.kill()
-        except Exception:  # pragma: no cover - defensive
-            pass
-
-    def close_pipes(self) -> None:
-        if self.process is None:
-            return
-        for stream in (self.process.stdout, self.process.stderr):
-            try:
-                if stream is not None:
-                    stream.close()
-            except Exception:  # pragma: no cover - defensive
-                pass
-        for thread in (self._stdout_thread, self._stderr_thread):
-            if thread is not None:
-                thread.join(timeout=2.0)
-
-    def drain_extra_lines(self) -> List[str]:
-        """Return the response lines that no statement claimed."""
-        extra: List[str] = []
+    def shutdown(self) -> Dict[str, Any]:
+        response = self.request(None, op="shutdown")
+        assert self.process is not None
+        self.process.stdin.close()
+        code = self.process.wait(timeout=self.timeout)
+        # Nothing may follow the shutdown answer on stdout.
+        extra = []
         while True:
             try:
-                line = self.stdout_queue.get_nowait()
+                line = self._lines.get_nowait()
             except queue.Empty:
                 break
-            if line is None:
-                continue
-            if line.strip():
-                extra.append(line.strip())
-        return extra
+            if line:
+                extra.append(line.decode("utf-8", "replace").rstrip("\n"))
+        if extra:
+            raise RuntimeError(
+                "the program wrote to stdout after the shutdown: " + " | ".join(extra)
+            )
+        if code != 0:
+            raise RuntimeError("the program exited with code {}".format(code))
+        return response
+
+    def stderr_tail(self, limit: int = 40) -> str:
+        return "\n".join(self.stderr_lines[-limit:])
 
 
-class _Timeout:
-    """Marker for a read that timed out."""
+def read_items(test_file: Path) -> List[Tuple[str, str]]:
+    """Read a ``.test`` file as a list of ``(kind, text)`` items."""
+    items: List[Tuple[str, str]] = []
+    for line in test_file.read_text(encoding="utf-8").splitlines():
+        text = line.strip()
+        if not text or text.startswith("#"):
+            continue
+        items.append(("directive" if text.startswith("--") else "sql", text))
+    return items
 
-    def __repr__(self) -> str:  # pragma: no cover - debugging helper
-        return "<timeout>"
 
-
-TIMEOUT = _Timeout()
-
-
-def run_case(case: Case, program: str, parent_dir: Path, timeout: float,
-             verbose: bool) -> CaseResult:
-    """Run one case against a fresh database and compare every response."""
-    result = CaseResult(case.case_id)
-    started = time.monotonic()
-
-    items = read_items(case.test_file)
-    expectations = read_expectations(case.result_file)
-    result.total = sum(1 for kind, _ in items if kind == "sql")
-
-    data_dir = parent_dir / case.case_id
-    if data_dir.exists():
-        shutil.rmtree(str(data_dir), ignore_errors=True)
-    data_dir.mkdir(parents=True, exist_ok=True)
-
+def run_case(
+    case_id: str,
+    package: Path,
+    argv: Sequence[str],
+    verbose: bool,
+    timeout: float = DEFAULT_TIMEOUT,
+) -> Tuple[bool, str]:
+    """Run one case and return ``(passed, message)``."""
+    test_file = package / "cases" / "{}.test".format(case_id)
+    result_file = package / "cases" / "{}.result".format(case_id)
+    expectations = json.loads(result_file.read_text(encoding="utf-8"))
+    data_dir = Path(tempfile.mkdtemp(prefix="minivectordb-case-"))
+    program = Program([token.replace("<datadir>", str(data_dir)) for token in argv])
+    program.timeout = timeout
+    index = 0
+    mode = "exact"
     try:
-        command = build_command(program, data_dir)
-    except ValueError as exc:
-        result.failures.append(Failure(str(exc)))
-        result.duration = time.monotonic() - started
-        return result
-
-    if verbose:
-        print("+ {}".format(format_command(command)), flush=True)
-
-    environment = os.environ.copy()
-    # The response protocol is UTF-8; make sure the child does not fall back
-    # to the console code page of the current locale (Windows).
-    environment["PYTHONIOENCODING"] = "utf-8"
-    environment["PYTHONUTF8"] = "1"
-    environment["PYTHONUNBUFFERED"] = "1"
-
-    runner = Program(command, environment, str(_REPO_ROOT))
-    try:
-        runner.start()
-    except OSError as exc:
-        result.failures.append(
-            Failure("cannot start the database program: {}".format(exc))
-        )
-        result.duration = time.monotonic() - started
-        return result
-
-    statement_index = 0
-    stopped = False
-
-    try:
-        for kind, text in items:
+        program.start()
+        ready = json.loads(program.read_line())
+        if ready != READY_MESSAGE:
+            return False, "expected the ready handshake, got {!r}".format(ready)
+        for kind, text in read_items(test_file):
             if kind == "directive":
-                name = text[2:].strip().split(" ")[0].split("=")[0].lower()
-                if name in RESTART_DIRECTIVES:
-                    # Normal shutdown, wait for the exit, start again with the
-                    # same data directory.
-                    runner.close_stdin()
-                    code = runner.wait(SHUTDOWN_TIMEOUT)
-                    if code is None:
-                        runner.kill()
-                        result.failures.append(
-                            Failure(
-                                "the database program did not exit within {:.1f}s "
-                                "of the restart directive".format(SHUTDOWN_TIMEOUT)
-                            )
-                        )
-                        stopped = True
-                        break
-                    if code != 0:
-                        result.failures.append(
-                            Failure(
-                                "the database program exited with code {} at the "
-                                "restart directive".format(code)
-                            )
-                        )
-                    runner.close_pipes()
-                    runner = Program(command, environment, str(_REPO_ROOT))
-                    try:
-                        runner.start()
-                    except OSError as exc:
-                        result.failures.append(
-                            Failure("cannot restart the database program: {}".format(exc))
-                        )
-                        stopped = True
-                        break
-                    if verbose:
-                        print("--- restart", flush=True)
-                    continue
-                # Every other directive is forwarded to the program; it does
-                # not answer a directive.
-                try:
-                    runner.send(text)
-                except (BrokenPipeError, OSError) as exc:
-                    result.failures.append(
-                        Failure(
-                            "the database program stopped accepting input at the "
-                            "directive {!r}: {}".format(text, exc)
-                        )
-                    )
-                    stopped = True
-                    break
+                if text == "--restart":
+                    program.shutdown()
+                    program.start()
+                    ready = json.loads(program.read_line())
+                    if ready != READY_MESSAGE:
+                        return False, "the restart did not send the handshake"
+                elif text in ("--mode exact", "--mode ann"):
+                    mode = text.split()[1]
+                else:
+                    return False, "unsupported directive {}".format(text)
                 continue
-
-            expectation = (
-                expectations[statement_index]
-                if statement_index < len(expectations)
-                else None
-            )
-            try:
-                runner.send(text)
-            except (BrokenPipeError, OSError) as exc:
-                exit_code = runner.process.poll()
-                result.failures.append(
-                    Failure(
-                        "the database program stopped accepting input after {} statement(s) "
-                        "(exit code {}): {}".format(statement_index, exit_code, exc),
-                        statement_index=statement_index,
-                        sql=text,
-                    )
-                )
-                stopped = True
-                break
-
-            line = runner.read_line(timeout)
-            if line is TIMEOUT:
-                runner.kill()
-                result.failures.append(
-                    Failure(
-                        "timeout after {:.1f}s waiting for the response to statement #{}".format(
-                            timeout, statement_index + 1
-                        ),
-                        statement_index=statement_index,
-                        sql=text,
-                    )
-                )
-                stopped = True
-                break
-
-            if line is None:
-                exit_code = runner.process.poll()
-                if exit_code is None:
-                    exit_code = runner.wait(SHUTDOWN_TIMEOUT)
-                result.failures.append(
-                    Failure(
-                        "the database program exited (exit code {}) without answering "
-                        "statement #{}".format(exit_code, statement_index + 1),
-                        statement_index=statement_index,
-                        sql=text,
-                    )
-                )
-                stopped = True
-                break
-
-            stripped = line.strip()
-            if not stripped:
-                result.failures.append(
-                    Failure(
-                        "the database program produced an empty response line for statement #{}".format(
-                            statement_index + 1
-                        ),
-                        statement_index=statement_index,
-                        sql=text,
-                    )
-                )
-                statement_index += 1
-                continue
-
-            try:
-                actual = json.loads(stripped)
-            except ValueError as exc:
-                result.failures.append(
-                    Failure(
-                        "the response to statement #{} is not valid JSON ({}): {}".format(
-                            statement_index + 1, exc, stripped
-                        ),
-                        statement_index=statement_index,
-                        sql=text,
-                        actual=stripped,
-                    )
-                )
-                statement_index += 1
-                continue
-
-            if expectation is None:
-                result.failures.append(
-                    Failure(
-                        "the result file has no expectation for statement #{}".format(
-                            statement_index + 1
-                        ),
-                        statement_index=statement_index,
-                        sql=text,
-                        actual=actual,
-                    )
-                )
-                statement_index += 1
-                continue
-
-            problems = compare_result(expectation, actual)
-            result.checked += 1
+            if index >= len(expectations):
+                return False, "the case has more statements than assertions"
+            response = program.request(text, mode)
             if verbose:
-                print("--- statement #{}: {}".format(statement_index + 1, text), flush=True)
-                print("expected: {}".format(format_value(expectation)), flush=True)
-                print("actual:   {}".format(format_value(actual)), flush=True)
-            if problems:
-                result.failures.append(
-                    Failure(
-                        "statement #{} does not match the expectation".format(
-                            statement_index + 1
-                        ),
-                        statement_index=statement_index,
-                        sql=text,
-                        expected=expectation,
-                        actual=actual,
-                        problems=problems,
-                    )
+                print("--- statement #{}: {}".format(index + 1, text))
+                print("--- answer #{}: {}".format(index + 1, json.dumps(response, ensure_ascii=False)))
+            try:
+                assert_response(
+                    response, expectations[index], {"abs_tol": 1e-5, "rel_tol": 1e-5}
                 )
-            statement_index += 1
-
-        # Every statement must have produced exactly one response line.
-        if statement_index > len(expectations):
-            for index in range(len(expectations), statement_index):
-                result.failures.append(
-                    Failure(
-                        "the result file has no expectation for statement #{}".format(index + 1),
-                        statement_index=index,
-                    )
-                )
-
-        for error in runner.stdout_errors:
-            result.failures.append(Failure(error))
-
+            except AssertionError as error:
+                return False, "statement {}: {}".format(index + 1, error)
+            index += 1
+        if index != len(expectations):
+            return False, "the case has more assertions than statements"
+        program.shutdown()
+        return True, "{} statements".format(index)
+    except Exception as error:  # noqa: BLE001
+        return False, "{}: {}".format(type(error).__name__, error)
     finally:
-        if not stopped:
-            runner.close_stdin()
-            exit_code = runner.wait(SHUTDOWN_TIMEOUT)
-            if exit_code is None:
-                runner.kill()
-                try:
-                    runner.wait(SHUTDOWN_TIMEOUT)
-                except Exception:  # pragma: no cover - defensive
-                    pass
-                result.failures.append(
-                    Failure(
-                        "the database program did not exit within {:.1f}s after stdin was closed".format(
-                            SHUTDOWN_TIMEOUT
-                        )
-                    )
-                )
-            elif exit_code != 0:
-                result.failures.append(
-                    Failure("the database program exited with code {}".format(exit_code))
-                )
-        else:
-            runner.kill()
-            runner.wait(SHUTDOWN_TIMEOUT)
-
-        runner.close_pipes()
-
-        # Any response line that was not claimed by a statement is a protocol
-        # violation (the program must answer exactly one line per statement).
-        for extra in runner.drain_extra_lines():
-            result.failures.append(
-                Failure("unexpected extra output line: {}".format(extra))
-            )
-
-    result.stderr = stderr_tail(runner.stderr_lines)
-    result.duration = time.monotonic() - started
-    result.passed = not result.failures
-    return result
+        if program.process is not None and program.process.poll() is None:
+            program.process.kill()
+        shutil.rmtree(str(data_dir), ignore_errors=True)
 
 
-# --------------------------------------------------------------------------
-# reporting
-# --------------------------------------------------------------------------
-def print_failures(result: CaseResult) -> None:
-    """Print the machine readable failure detail of one case."""
-    for failure in result.failures:
-        location = ""
-        if failure.statement_index is not None:
-            location = "statement #{} (index {})".format(
-                failure.statement_index + 1, failure.statement_index
-            )
-        print("  {}: {}".format(location or "case", failure.message), flush=True)
-        if failure.sql is not None:
-            print("    sql: {}".format(failure.sql), flush=True)
-        for problem in failure.problems:
-            print("    - {}".format(problem), flush=True)
-        if failure.expected is not None:
-            print("    expected:", flush=True)
-            print(format_value(failure.expected), flush=True)
-        if failure.actual is not None:
-            print("    actual:", flush=True)
-            print(format_value(failure.actual), flush=True)
-    if result.stderr:
-        print("  stderr (tail):", flush=True)
-        for line in result.stderr.splitlines():
-            print("    {}".format(line), flush=True)
-
-
-# --------------------------------------------------------------------------
-# CLI
-# --------------------------------------------------------------------------
-def build_parser() -> argparse.ArgumentParser:
+def main(argv=None) -> int:
     parser = argparse.ArgumentParser(
         prog="run_case.py",
-        description=(
-            "Run the public MiniVectorDB mysqltest cases against the database "
-            "program. Every case runs on a fresh, empty data directory."
-        ),
-        formatter_class=argparse.RawDescriptionHelpFormatter,
-        epilog=(
-            "examples:\n"
-            "  python tools/run_case.py\n"
-            "  python tools/run_case.py --case sql_crud\n"
-            "  python tools/run_case.py --data-dir .tmp/cases --keep\n"
-            "  python tools/run_case.py --program \"python -m minivectordb --data-dir <datadir>\"\n"
-        ),
+        description="Run the public mysqltest cases against the local program.",
     )
+    parser.add_argument("--case", action="append", help="public case id")
     parser.add_argument(
-        "--case",
-        action="append",
-        metavar="NAME",
-        help="run only the given case (may be repeated); default: every case in mysqltest/manifest.json",
-    )
-    parser.add_argument(
-        "--data-dir",
-        metavar="DIR",
-        help=(
-            "parent directory for the per-case data directories; "
-            "default: a temporary directory that is removed afterwards"
-        ),
+        "--cases-dir",
+        default=str(_REPO_ROOT / "mysqltest"),
+        help="directory of the task package (default: mysqltest)",
     )
     parser.add_argument(
         "--program",
         default=DEFAULT_PROGRAM,
-        metavar="CMD",
-        help=(
-            "command that starts the database program; the placeholder <datadir> is "
-            "replaced by the per-case data directory; "
-            "default: \"{}\"".format(DEFAULT_PROGRAM)
-        ),
-    )
-    parser.add_argument(
-        "--keep",
-        action="store_true",
-        help="keep the per-case data directories instead of deleting them",
-    )
-    parser.add_argument(
-        "--verbose",
-        action="store_true",
-        help="print every statement together with the expected and actual objects",
+        help="the program under test; <datadir> is replaced by the data directory",
     )
     parser.add_argument(
         "--timeout",
         type=float,
         default=DEFAULT_TIMEOUT,
-        metavar="SECONDS",
-        help="timeout in seconds for a single statement (default: %(default)s)",
+        help="seconds the program may take for one answer (default: 60)",
     )
-    parser.add_argument(
-        "--cases-dir",
-        metavar="DIR",
-        help="directory holding manifest.json and the cases/ sub directory (default: mysqltest)",
-    )
-    return parser
+    parser.add_argument("--verbose", action="store_true", help="print every case")
+    arguments = parser.parse_args(argv)
 
-
-def _configure_output_encoding() -> None:
-    """Emit UTF-8 when the output is piped.
-
-    On Windows a redirected stdout uses the console code page, which would make
-    the SQL statements and the failure details unreadable for the caller.
-    """
-    for stream in (sys.stdout, sys.stderr):
-        try:
-            if not stream.isatty():
-                stream.reconfigure(encoding="utf-8", errors="replace")
-        except Exception:  # pragma: no cover - defensive
-            pass
-
-
-def main(argv: Optional[Sequence[str]] = None) -> int:
-    _configure_output_encoding()
-    parser = build_parser()
-    args = parser.parse_args(argv)
-
-    cases_dir = Path(args.cases_dir).resolve() if args.cases_dir else (_REPO_ROOT / "mysqltest")
-    try:
-        all_cases = load_cases(cases_dir)
-    except (OSError, ValueError, KeyError) as exc:
-        print("error: cannot load the cases: {}".format(exc), file=sys.stderr)
-        return 2
-
-    if args.case:
-        wanted = list(dict.fromkeys(args.case))
-        known = {case.case_id for case in all_cases}
-        unknown = [name for name in wanted if name not in known]
+    package = Path(arguments.cases_dir)
+    manifest = json.loads((package / "manifest.json").read_text(encoding="utf-8"))
+    cases = [entry["id"] for entry in manifest["cases"]]
+    if arguments.case:
+        unknown = set(arguments.case) - set(cases)
         if unknown:
+            parser.error("unknown public case: " + ", ".join(sorted(unknown)))
+        cases = [case for case in cases if case in arguments.case]
+
+    argv_program = split_command(arguments.program)
+    passed = 0
+    failures = []
+    for case_id in cases:
+        started = time.perf_counter()
+        ok, message = run_case(
+            case_id, package, argv_program, arguments.verbose, arguments.timeout
+        )
+        duration = time.perf_counter() - started
+        if ok:
+            passed += 1
             print(
-                "error: unknown case(s): {} (known: {})".format(
-                    ", ".join(unknown), ", ".join(sorted(known))
-                ),
-                file=sys.stderr,
-            )
-            return 2
-        selected = [case for case in all_cases if case.case_id in wanted]
-    else:
-        selected = list(all_cases)
-
-    if not selected:
-        print("error: no case selected", file=sys.stderr)
-        return 2
-
-    temporary_parent: Optional[Path] = None
-    if args.data_dir:
-        parent_dir = Path(args.data_dir).resolve()
-        parent_dir.mkdir(parents=True, exist_ok=True)
-    else:
-        temporary_parent = Path(tempfile.mkdtemp(prefix="minivectordb-selftest-"))
-        parent_dir = temporary_parent
-
-    results: List[CaseResult] = []
-    try:
-        for case in selected:
-            result = run_case(
-                case,
-                program=args.program,
-                parent_dir=parent_dir,
-                timeout=args.timeout,
-                verbose=args.verbose,
-            )
-            results.append(result)
-            if result.passed:
-                print(
-                    "[PASS] {} statements={}/{} duration={:.3f}s".format(
-                        result.case_id, result.checked, result.total, result.duration
-                    ),
-                    flush=True,
+                "[PASS] {} statements={} duration={:.3f}s".format(
+                    case_id, message, duration
                 )
-            else:
-                print(
-                    "[FAIL] {} statements={}/{} duration={:.3f}s failures={}".format(
-                        result.case_id,
-                        result.checked,
-                        result.total,
-                        result.duration,
-                        len(result.failures),
-                    ),
-                    flush=True,
-                )
-                print_failures(result)
-            if not args.keep:
-                shutil.rmtree(str(parent_dir / case.case_id), ignore_errors=True)
-    finally:
-        if temporary_parent is not None and not args.keep:
-            shutil.rmtree(str(temporary_parent), ignore_errors=True)
-
-    passed = sum(1 for result in results if result.passed)
-    total = len(results)
+            )
+        else:
+            failures.append((case_id, message))
+            print("[FAIL] {}: {}".format(case_id, message))
     print(
-        "summary: {}/{} cases passed ({})".format(
+        "summary: {}/{} cases passed{}".format(
             passed,
-            total,
-            ", ".join(result.case_id for result in results if not result.passed) or "no failures",
-        ),
-        flush=True,
+            len(cases),
+            "" if not failures else " (failures)",
+        )
     )
-    return 0 if passed == total else 1
+    return 0 if passed == len(cases) else 1
 
 
 if __name__ == "__main__":

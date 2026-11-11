@@ -1,17 +1,12 @@
 """Entry point: ``python -m minivectordb --data-dir /data``.
 
-The program stays in the foreground, reads SQL statements from stdin and
-writes one JSON result object per statement to stdout.  No network socket is
-opened, exactly as the task statement requires.
+The program stays in the foreground, speaks the JSON Lines protocol of the
+task package on stdin/stdout and opens no network socket.
 
-The retrieval mode (``exact`` or ``ann``) can be selected in several ways so
-that the test driver finds a channel that works for it:
-
-* command line: ``--mode ann`` / ``--search-mode ann`` / ``--ann``
-* environment: ``MINIVECTORDB_MODE``, ``MINIVECTORDB_SEARCH_MODE``,
-  ``SEARCH_MODE``, ``MODE``, ``VECTOR_SEARCH_MODE``, ``RETRIEVAL_MODE``
-* inside the session: ``SET search_mode = 'ann';``
-* a driver directive on stdin: ``--mode ann``
+The retrieval mode (``exact`` or ``ann``) is chosen per request by the
+judge (``search_mode``).  The options below only set the mode that is used
+before the first request arrives, so that a driver that starts the program
+with a mode also works.
 """
 
 from __future__ import annotations
@@ -34,6 +29,9 @@ MODE_ENV_VARS = (
     "RETRIEVAL_MODE",
 )
 
+#: Environment variables that may carry the data directory.
+DATA_DIR_ENV_VARS = ("MINIVECTORDB_DATA_DIR", "VECTORDB_DATA_DIR")
+
 
 def initial_mode(default: str = "exact") -> str:
     """Read the retrieval mode from the environment."""
@@ -46,6 +44,29 @@ def initial_mode(default: str = "exact") -> str:
     return default
 
 
+def initial_data_dir() -> str:
+    """Read the data directory from the environment."""
+    for name in DATA_DIR_ENV_VARS:
+        value = os.environ.get(name)
+        if value:
+            return value
+    return "/data"
+
+
+def force_utf8_streams() -> None:
+    """Make the protocol streams UTF-8, whatever the console code page is.
+
+    The protocol is UTF-8 by definition.  On a Windows host the standard
+    streams would otherwise use the code page of the console, and a Chinese
+    text would reach the judge as mojibake.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        try:
+            stream.reconfigure(encoding="utf-8")  # type: ignore[union-attr]
+        except (AttributeError, ValueError):  # pragma: no cover - defensive
+            pass
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="minivectordb",
@@ -53,7 +74,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--data-dir",
-        default=os.environ.get("MINIVECTORDB_DATA_DIR", "/data"),
+        default=initial_data_dir(),
         help="directory that holds the database files (default: /data)",
     )
     parser.add_argument(
@@ -82,8 +103,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=os.environ.get("MINIVECTORDB_READY_MARKER", "stdout"),
         choices=["stdout", "stderr", "both", "none", "off"],
         help=(
-            "where the readiness marker is written; it is only sent when the "
-            "driver did not send a statement yet (default: stdout)"
+            "where the startup handshake is written; the judge expects it on "
+            "stdout, 'none' only exists for local debugging (default: stdout)"
         ),
     )
     return parser
@@ -91,6 +112,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main(argv=None) -> int:
     args = build_parser().parse_args(argv)
+    force_utf8_streams()
     mode = "ann" if args.ann else "exact" if args.exact else args.mode.lower()
     data_dir = Path(args.data_dir)
     database = Database(data_dir)

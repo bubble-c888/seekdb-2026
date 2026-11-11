@@ -599,6 +599,10 @@ class Parser:
         if tok.kind != "word":
             if tok.kind == "eof":
                 self._missing("a select item")
+            if tok.kind in ("int", "string"):
+                # A projection that is a literal (``SELECT 1``) is outside the
+                # subset of the task statement.
+                _unsupported("a literal select item is not supported")
             self._err("expected a select item", tok)
         if self.peek(1).is_op("("):
             return self._parse_function_item()

@@ -1,0 +1,35 @@
+{
+  "synthetic": false,
+  "scope": "Actual available development interaction and executed local verification only. No student technical explanations have been supplied. Agent design choices must not be attributed to the student. Earlier unrelated competition conversations are excluded.",
+  "user_prompts": [
+    {
+      "source": "student",
+      "content": "完成这个，需要下载东西安装在D盘"
+    }
+  ],
+  "context": {
+    "source": "student-provided task attachment",
+    "content": "Implement MiniVectorDB on seekdb 2026-competition-round2. SQL CRUD, float32 vectors, exact TopK, transactions and crash recovery; JSONL protocol; Dockerfile and real conversation material required."
+  },
+  "agent_work": [
+    {
+      "source": "agent",
+      "content": "Implemented a custom Python standard-library database, durable redo commits, disk transaction overlays, bounded external sorting and coordinate-projection vector index. No SQLite or vector-index library used."
+    }
+  ],
+  "experiments": [
+    {
+      "source": "tool",
+      "status": "executed",
+      "output": "[{\"case\": \"sql_crud\", \"passed\": true, \"statements\": 7}, {\"case\": \"sql_comparisons\", \"passed\": true, \"statements\": 4}, {\"case\": \"sql_ordering\", \"passed\": true, \"statements\": 4}, {\"case\": \"sql_empty\", \"passed\": true, \"statements\": 3}, {\"case\": \"sql_primary_key\", \"passed\": true, \"statements\": 4}, {\"case\": \"sql_unicode\", \"passed\": true, \"statements\": 3}, {\"case\": \"sql_bigint\", \"passed\": true, \"statements\": 3}, {\"case\": \"sql_unsupported\", \"passed\": true, \"statements\": 3}, {\"case\": \"storage_restart\", \"passed\": true, \"statements\": 3}, {\"case\": \"vector_euclidean\", \"passed\": true, \"statements\": 3}, {\"case\": \"transaction_commit\", \"passed\": true, \"statements\": 6}, {\"case\": \"transaction_rollback\", \"passed\": true, \"statements\": 6}, {\"case\": \"storage_mutations\", \"passed\": true, \"statements\": 6}, {\"case\": \"storage_multiple_tables\", \"passed\": true, \"statements\": 6}, {\"case\": \"vector_ties_and_filter\", \"passed\": true, \"statements\": 5}, {\"case\": \"vector_float32\", \"passed\": true, \"statements\": 3}, {\"case\": \"vector_index_maintenance\", \"passed\": true, \"statements\": 9}, {\"case\": \"transaction_failed_insert\", \"passed\": true, \"statements\": 8}, {\"case\": \"transaction_autocommit_atomic\", \"passed\": true, \"statements\": 4}, {\"case\": \"transaction_shutdown_rollback\", \"passed\": true, \"statements\": 5}]"
+    },
+    {
+      "source": "tool",
+      "status": "executed",
+      "output": "PASS: 175 independent filtered TopK checks; 5 force-kill recoveries; statement atomicity; transactional DDL rollback; committed delete durability"
+    }
+  ],
+  "limitations": {
+    "content": "Windows adapter reused official public assertions. Official POSIX driver failed on this Windows environment; actual Linux Docker build and resource/performance evaluation are not yet executed. No fabricated student predictions, explanations, feedback or learning outcomes are included. Public success does not imply formal admission or a score."
+  }
+}

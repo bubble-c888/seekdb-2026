@@ -1,7 +1,7 @@
 name: MiniVectorDB scale diagnosis
 on:
   push:
-    branches: [round2-scale-diagnosis]
+    branches: [round2-scale-diagnosis, round2-storage-fix, 2026-competition-round2]
 permissions:
   contents: read
 jobs:

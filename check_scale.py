@@ -32,8 +32,11 @@ def main():
             assert rows['rows']==[[i] for i in range(count-1,-1,-1) if i%3==2][:3]
             request('index','CREATE VECTOR INDEX large_v ON large(v)')
             request('full_table_update','UPDATE large SET g = 4')
+            request('explicit_begin','BEGIN')
+            request('explicit_update','UPDATE large SET g = 5')
+            request('explicit_commit','COMMIT')
             print('START crash_restart',flush=True);session.crash();session.start();print('PASS crash_restart',flush=True)
-            rows=request('post_recovery','SELECT id FROM large WHERE g = 4 ORDER BY id DESC LIMIT 3')
+            rows=request('post_recovery','SELECT id FROM large WHERE g = 5 ORDER BY id DESC LIMIT 3')
             assert rows['rows']==[[count-1],[count-2],[count-3]]
             request('full_table_delete','DELETE FROM large')
             assert request('empty','SELECT id FROM large')['rows']==[]

@@ -98,17 +98,40 @@ class Database:
         self.dirty = set()
         self.tx = None
         self.stages = []
+        # A checkpoint is published only after materialization is complete.
+        # Recovery never rewrites transactions whose applied state is known.
+        self.applied_sequence = 0
+        checkpoint = self.root / 'checkpoint.json'
+        if checkpoint.exists():
+            state = json.loads(checkpoint.read_text(encoding='utf-8'))
+            self.catalog = state['catalog']
+            self.indexes = state['indexes']
+            self.applied_sequence = state['sequence']
         # Published commit files are durable redo records. Unpublished .tmp files
         # and transaction workspaces never become visible after process death.
         for log in sorted(self.logs.glob('*.jsonl')):
-            self.apply(log)
+            if int(log.stem) > self.applied_sequence:
+                self.apply(log)
+                self.applied_sequence = int(log.stem)
         self.workspace = self.root / 'workspace'
         if self.workspace.exists():
             shutil.rmtree(self.workspace)
         self.workspace.mkdir()
-        self.sequence = max((int(p.stem) for p in self.logs.glob('*.jsonl')), default=0)
+        self.sequence = max((int(p.stem) for p in self.logs.glob('*.jsonl')), default=self.applied_sequence)
+        self.write_checkpoint()
         for table in self.indexes:
             self.build_index(table)
+
+    def write_checkpoint(self):
+        target = self.root / 'checkpoint.json'
+        temp = target.with_suffix('.tmp')
+        state = {'sequence': self.applied_sequence, 'catalog': self.catalog, 'indexes': self.indexes}
+        with temp.open('w', encoding='utf-8') as file:
+            file.write(encode(state))
+            file.flush()
+            os.fsync(file.fileno())
+        os.replace(temp, target)
+        self.sync_dir(self.root)
 
     def apply(self, log):
         with log.open(encoding='utf-8') as file:
@@ -123,12 +146,21 @@ class Database:
                 else:
                     self.dirty.add(op[1])
                     target = self.base / op[1] / (str(op[2]) + '.json')
-                    if op[3] is None:
+                    patch = target.with_suffix('.patch')
+                    if op[0] == 'patch':
+                        changes = json.loads(patch.read_text(encoding='utf-8')) if patch.exists() else {}
+                        changes.update(op[3])
+                        temp = patch.with_suffix('.patch-tmp')
+                        temp.write_text(encode(changes), encoding='utf-8')
+                        os.replace(temp, patch)
+                    elif op[3] is None:
                         target.unlink(missing_ok=True)
+                        patch.unlink(missing_ok=True)
                     else:
                         temp = target.with_suffix('.tmp')
                         temp.write_text(encode(op[3]), encoding='utf-8')
                         os.replace(temp, target)
+                        patch.unlink(missing_ok=True)
 
     def build_index(self, table):
         """External-merge a coordinate projection; distance provides an exact bound."""
@@ -273,6 +305,8 @@ class Database:
         os.replace(temp, target)
         self.sync_dir(self.logs)
         self.apply(target)
+        self.applied_sequence = self.sequence
+        self.write_checkpoint()
         self.clear()
 
     def clear(self, rollback=False):
@@ -296,8 +330,20 @@ class Database:
 
     def get(self, table, key):
         overlay = self.overlay(table) / (str(key) + '.json')
-        path = overlay if overlay.exists() else self.base / table / (str(key) + '.json')
-        return json.loads(path.read_text(encoding='utf-8')) if path.exists() else None
+        staged = json.loads(overlay.read_text(encoding='utf-8')) if overlay.exists() else {}
+        if not isinstance(staged, dict):
+            return staged
+        path = self.base / table / (str(key) + '.json')
+        if not path.exists():
+            return None
+        row = json.loads(path.read_text(encoding='utf-8'))
+        patch = path.with_suffix('.patch')
+        if patch.exists():
+            for index, value in json.loads(patch.read_text(encoding='utf-8')).items():
+                row[int(index)] = value
+        for index, value in staged.get('patch', {}).items():
+            row[int(index)] = value
+        return row
 
     def rows(self, table):
         overlay = self.overlay(table)
@@ -506,16 +552,27 @@ class Database:
                     for key,row in self.rows(table):
                         if predicate(row):
                             if command=='UPDATE':
-                                row=row.copy()
-                                for index,value in changes.items():row[index]=value
-                            else:row=None
-                            file.write(encode(['row',table,key,row])+'\n');count+=1
+                                operation=['patch',table,key,changes]
+                            else:
+                                operation=['row',table,key,None]
+                            file.write(encode(operation)+'\n');count+=1
                 parser.end()
-            # No modifications become visible until the whole statement validates.
-            with stage.open(encoding='utf-8') as file:
-                for line in file:
-                    _,_,key,row=json.loads(line)
-                    (self.overlay(table)/(str(key)+'.json')).write_text(encode(row),encoding='utf-8')
+            # Autocommit publishes the validated redo directly. Only explicit
+            # transactions need a second on-disk copy for read-your-own-writes.
+            if self.tx is not None:
+                with stage.open(encoding='utf-8') as file:
+                    for line in file:
+                        kind,_,key,row=json.loads(line)
+                        target = self.overlay(table)/(str(key)+'.json')
+                        if kind == 'patch':
+                            previous = json.loads(target.read_text(encoding='utf-8')) if target.exists() else {'patch': {}}
+                            if isinstance(previous, list):
+                                for index,value in row.items():previous[int(index)] = value
+                                row = previous
+                            else:
+                                previous['patch'].update(row)
+                                row = previous
+                        target.write_text(encode(row),encoding='utf-8')
             self.stages.append(stage)
             if self.tx is None:self.commit()
             return {'affected_rows':count}

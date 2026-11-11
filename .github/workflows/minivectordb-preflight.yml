@@ -1,0 +1,43 @@
+name: MiniVectorDB preflight
+on:
+  workflow_dispatch:
+  push:
+    branches: [minivectordb-local-validation, round2-integration-validation, round2-timeout-fix, round2-storage-fix, 2026-competition-round2]
+permissions:
+  contents: read
+jobs:
+  submitted-image:
+    name: Submitted image (minivectordb/)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build submitted source
+        run: docker build -t minivectordb:preflight .
+      - name: Official handshake
+        run: python3 protocol_check/run.py --image minivectordb:preflight --handshake-only --output protocol-results/handshake
+      - name: Official public SQL
+        run: python3 protocol_check/run.py --image minivectordb:preflight --output protocol-results/public
+      - name: Unit tests of the submitted implementation
+        run: docker run --rm -v "$PWD:/repo:ro" -w /repo --entrypoint python minivectordb:preflight -m unittest discover -s tests -t . -v
+      - name: Large batch and recovery under official limits
+        run: python3 check_bulk.py --image minivectordb:preflight
+      - name: Larger than memory scenario under official limits
+        run: python3 check_scale.py --image minivectordb:preflight
+      - name: Retain preflight logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: minivectordb-preflight
+          path: protocol-results/
+
+  reference-implementation:
+    name: Reference implementation (main.py)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Independent Linux recovery and TopK checks
+        run: python3 check_recovery.py
+      - name: Patch transaction and interrupted-redo regression
+        run: python3 check_patch_recovery.py

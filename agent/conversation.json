@@ -6,7 +6,7 @@
     "branch": "2026-competition-round2",
     "language": "Python 3.13 + numpy",
     "scope": "本文件记录本次提交版本的开发过程：学生（参赛者）的原始需求与关键判断、Agent 的实现过程、实际执行的验证实验及结果、以及已知限制。全部实验输出均为真实执行结果，未执行的内容明确标注为计划。",
-    "evidence_policy": "student_evidence 字段为学生本人的发言；result_evidence 字段为实验的实际输出；两者不混用。Agent 的分析与解释单独记录在 conversations 中，不作为学生理解的证据。"
+    "evidence_policy": "student_evidence 字段为学生原话或平台反馈原文；result_evidence 字段为实际执行后的真实输出；agent_explanation 字段是 Agent 的分析与取舍记录。conversations 中所有 user 条目均为真实用户发言，parallel_work_line 段落记录的是同一场开发里并行推进的另一条实现线，其代码作为参考保留在仓库中，但本次提交的实现是 minivectordb/ 下的列存版本。"
   },
   "user_prompts": [
     {
@@ -196,6 +196,42 @@
       "role": "agent",
       "content": "继续优化查询路径：距离计算改为分块写入复用的缓冲区，结果与原来的写法逐位相同（实测 max diff 为 0.0），省掉了每次查询的临时数组分配；整块命中过滤条件时不再先做一次花式索引拷贝。实测每次查询从 5.16 毫秒降到 3.04 毫秒，过滤与不过滤两组 Recall@10 分别是 0.9996 和 0.9998，都高于题面要求的 0.95。",
       "note": "精确扫描仍然是精确扫描，没有为了速度放宽过滤或排序规则。"
+    },
+    {
+      "id": "c20",
+      "role": "user",
+      "content": "这个会很消耗内存吗",
+      "note": "并行开发线的真实发言记录。"
+    },
+    {
+      "id": "c21",
+      "role": "assistant",
+      "content": "只执行刚才的 git clone，一般不会很占内存。主要开销是下载流量和磁盘空间。比较吃内存的是后面启动 Docker 跑自测。赛题容器的内存限制和 Windows 上 Docker Desktop、WSL 的总占用应分别考虑。",
+      "note": "并行开发线的真实发言记录。 原始注记：Summary of the assistant response."
+    },
+    {
+      "id": "c22",
+      "role": "user",
+      "content": "docker是不是小型的虚拟机",
+      "note": "并行开发线的真实发言记录。"
+    },
+    {
+      "id": "c23",
+      "role": "assistant",
+      "content": "虚拟机有自己的操作系统内核，而容器里的程序共享同一个内核。在 Windows 上，WSL 2 提供轻量 Linux 虚拟机，Docker 在里面启动容器。",
+      "note": "并行开发线的真实发言记录。 原始注记：Excerpt from the assistant response."
+    },
+    {
+      "id": "c24",
+      "role": "user",
+      "content": "我把赛题弄下来了，你在读读",
+      "note": "并行开发线的真实发言记录。"
+    },
+    {
+      "id": "c25",
+      "role": "assistant",
+      "content": "复核题面后发现整库快照和全量加载无法满足超内存数据要求。SQLite 等现成存储引擎也不符合规则，因此改为自研磁盘行存储和事务重放。",
+      "note": "并行开发线的真实发言记录。 原始注记：Summary of the assistant's implementation decision."
     }
   ],
   "experiments": [
@@ -374,6 +410,22 @@
       "command": "python G:\\MiniVectorDB\\scripts\\perf_check.py --rows 10000 --queries 500 --batch 100 --memory 512m --ann",
       "result_evidence": "{\n  \"rows\": 10000,\n  \"queries\": 500,\n  \"batch\": 100,\n  \"write_seconds\": 5.563,\n  \"query_seconds\": 1.634,\n  \"query_ms_avg\": 3.172,\n  \"query_ms_p95\": 4.805,\n  \"recall_filtered\": 1.0,\n  \"recall_plain\": 0.9996,\n  \"data_mib\": 13.32,\n  \"peak_memory_mib\": 71.25,\n  \"memory_limit\": \"512m\",\n  \"mode\": \"ann\"\n}",
       "conclusion": "近似模式两组召回率分别为 1.0 与 0.9996，高于题面要求的 0.95；建索引与切换模式都不影响写入吞吐。"
+    },
+    {
+      "id": "e23",
+      "question": "协议改成题包公布的 JSONL 之后，功能与性能是否仍然成立？",
+      "method": "用题包自带的 protocol_check/run.py（判题器同源）跑全部公开用例，用本地驱动 tools/run_case.py 在 Windows 上跑同一批用例，断言直接复用题包的 protocol_check/_assertions.py；再在官方资源限制的容器里跑规模测试。",
+      "command": "docker run --rm -v mvdb-check-out:/out mvdb-checker:local python tools/run_checker.py --output /out/check-all",
+      "result_evidence": "官方 protocol_check/run.py 在容器内 20/20 PASS；本地可移植驱动 20/20；175 个单元测试通过；容器内 2 GiB 限额下 200,000 行 × 128 维：写入 81.8 s、索引 9.7 s、带过滤 TopK 32 ms、全表 UPDATE 1.39 s、峰值内存 251 MiB；50,000 行 × 8 KB 互异文本：写入 73.1 s、全表 UPDATE 0.40 s、峰值内存 462.7 MiB。",
+      "conclusion": "协议换成题包公布的 JSONL 之后，公开用例、单元测试与规模测试都成立。规模测试同时暴露了一个真实的限制：VARCHAR 字典的内容常驻内存，互不相同的文本总量很大时内存占用会跟着上升。"
+    },
+    {
+      "id": "e24",
+      "question": "公开用例覆盖不到、但题面明确要求报错的一类语句，是否真的都会报错？",
+      "method": "新建 tests/test_unsupported.py，对题面列出的每一类不支持语句（NULL、JOIN、聚合、GROUP BY、子查询、ALTER TABLE、外键、CHECK/UNIQUE、嵌套 BEGIN、主键更新）都跑一次真实进程：要求返回 ok=false、error.code 非空，并且连接随后仍然可用、语句没有留下部分修改。",
+      "command": "python -m unittest tests.test_unsupported -v",
+      "result_evidence": "Ran 13 tests ... OK：13 个用例全部通过，覆盖 25 条应当被拒绝的语句（含非数、无穷大、维度不符、float32 溢出与 BIGINT 越界）。",
+      "conclusion": "题面要求“必须报错”的类别都不会被静默执行为别的语义，并且失败语句不会留下部分生效的数据。"
     }
   ],
   "design_decisions": [
@@ -460,6 +512,23 @@
       "result_evidence": "{\n  \"rows\": 10000,\n  \"queries\": 1000,\n  \"batch\": 100,\n  \"write_seconds\": 33.326,\n  \"query_seconds\": 5.257,\n  \"query_ms_avg\": 5.158,\n  \"query_ms_p95\": 8.803,\n  \"recall_filtered\": 0.053,\n  \"recall_plain\": 0.9998,\n  \"data_mib\": 13.31,\n  \"peak_memory_mib\": 69.34,\n  \"memory_limit\": \"512m\"\n}",
       "result_evidence_pointer": "/experiments/17/result_evidence",
       "agent_explanation": "题面规定过滤后的 TopK 必须在满足 WHERE 条件的集合里算，真值也在过滤集合里算，分母是 min(K, N)。驱动脚本最初把过滤查询的真值算成了全表真值，导致召回被低估成 0.053；按题面口径修正后是 0.9996。这个差异本身说明：过滤语义与真值口径必须同时对齐，否则指标没有可比性。"
+    },
+    {
+      "id": "d8",
+      "topic": "协议实现以题包公布的 STDIO_PROTOCOL.md 为唯一准绳",
+      "student_evidence": "你去找官方驱动给我",
+      "student_evidence_pointer": "/user_prompts/3/content",
+      "student_evidence_note": "学生要求拿到组织方的官方驱动，而不是继续猜封装形式。",
+      "result_evidence": "官方 protocol_check/run.py 在容器内 20/20 PASS；本地可移植驱动 20/20；175 个单元测试通过；容器内 2 GiB 限额下 200,000 行 × 128 维：写入 81.8 s、索引 9.7 s、带过滤 TopK 32 ms、全表 UPDATE 1.39 s、峰值内存 251 MiB；50,000 行 × 8 KB 互异文本：写入 73.1 s、全表 UPDATE 0.40 s、峰值内存 462.7 MiB。",
+      "result_evidence_pointer": "/experiments/22/result_evidence",
+      "agent_explanation": "在驱动公开之前，协议层只能按公开 .result 的语义反推，那一版是错的。题包把 STDIO_PROTOCOL.md 和官方检查器放进分支之后，协议层被整体重写：启动主动输出握手对象并 flush、每个请求一行 JSON、响应回传同类型 id 并带布尔 ok、修改带 affected_rows、失败用 error.code 与 error.message、shutdown 之后 stdout 不再有任何输出。本地驱动也改成同一套协议，断言直接引用题包的断言模块，这样本地结论与判题结论用的是同一套规则，不会再各说各话。",
+      "related_student_evidence": [
+        {
+          "student_evidence": "提测出现了这个，并没有通过",
+          "student_evidence_pointer": "/user_prompts/8/content",
+          "student_evidence_note": "首次提测未通过；平台后来给出的具体原因是 JSON response timeout。"
+        }
+      ]
     }
   ],
   "retrospective": [
@@ -502,6 +571,14 @@
     {
       "id": "r10",
       "content": "这一轮最有价值的产出不是新功能，而是把『看得见的数字』和『想当然的机制』分开：基准第一次跑出写入 33.3 秒时，直觉是引擎慢，但同样负载直接调引擎只要 4.3 秒，差值全在协议层；如果不做这层对照，就会把优化力气花在错误的地方。反过来，两次看似是数据库缺陷的失败（容器重启后表丢失、过滤召回为 0），最后定位到的都是自己测试脚本的问题（挂载参数漏 :/data、真值口径用错）。这提醒我，评测驱动是别人写的正式材料，测试脚本是自己的中间产物，出问题时必须先确认哪一侧的问题，再决定改哪一侧。"
+    },
+    {
+      "id": "r11",
+      "content": "最贵的错误是把“协议未公开”当成了一个可以绕开的问题。公开用例只断言SQL 语义，不描述进程之间怎么传字节，于是我按 .result 反推出一套“裸 SQL 输入 + 自造响应”的协议，还为它写了一大段兼容说明。组织方后来把 STDIO_PROTOCOL.md 和官方检查器放进题包，我第一反应是去核对，结果整套协议层都要重写，单元测试也全部要迁移。教训是：协议这种由外部定义的东西，猜的成本远高于等它公开；在它公开之前，应该把不确定性收敛到一个文件里，并且明确写下来“这一层是未经验证的”，而不是让它看起来已经确定。"
+    },
+    {
+      "id": "r12",
+      "content": "分支上出现了并行的另一条实现线（磁盘行存，单文件 main.py）。它的价值不在代码——它的写入是 38.77 秒、ANN 召回曾经只有 0.51——而在于它记录了平台给出的具体失败原因：JSON response timeout，并且复现出了两个具体场景：15 MB 的一次性 INSERT，以及 17,000 行 × 128 KB 文本在全表 UPDATE 时的超时。这些信息是我这条线没有拿到的。处理方式是把两条线合并（不是覆盖），提交的实现仍是我验证过的列存版本，对方的实现作为参考保留在仓库里。"
     }
   ],
   "limitations": [
@@ -548,17 +625,27 @@
       "id": "l10",
       "content": "预写日志记录的是物理补丁（base64 编码），10,000 行 × 128 维的一次全量写入会产生约 6.8 MiB 的日志文件，检查点之前不回收；数据量再大一个量级时日志体积与检查点耗时需要重新评估。当前实现按交易日志整体 fsync 提交，批次数越多 fsync 次数越多，在慢盘上写入耗时会线性增长。",
       "status": "open"
+    },
+    {
+      "id": "l11",
+      "content": "VARCHAR 列用字典编码，字典内容常驻内存。容器内实测：50,000 行 × 8 KB 互不相同文本（410 MB 负载）时峰值内存 462.7 MiB，内存占用与互异文本总量同量级。如果正式用例把数据量做成“大量互不相同的长文本”，这条路径会先触及内存限额。向量列没有这个问题：它是按块流式读取的，200,000 行 × 128 维（102 MB 数据）时峰值内存 251 MiB。",
+      "status": "open"
+    },
+    {
+      "id": "l12",
+      "content": "正式用例共 29 个，公开包只放出 20 个；剩下 9 个的具体输入、操作序列和预期结果没有公开。因此无法确认隐藏用例是否覆盖了本实现尚未处理的情形，只能按题面列出的功能要求逐条自测：必须报错的类别有专门测试，资源限制下的规模有容器实测。",
+      "status": "open"
     }
   ],
   "planned_next_steps": [
     {
       "id": "n1",
-      "content": "在组织方驱动公开后，按真实驱动对齐协议层，并复跑 20 个公开用例。",
+      "content": "协议层已按题包公布的 STDIO_PROTOCOL.md 重写并用官方检查器验证；接下来提测后按平台给出的失败类别与日志逐条回归。",
       "status": "pending"
     },
     {
       "id": "n2",
-      "content": "在平台给出失败类别与日志后，按失败类别逐项回归；如果是协议错位，优先改 minivectordb/protocol.py 的响应封装。",
+      "content": "在平台给出失败类别与日志后按类别回归；若仍是 JSON response timeout，先看请求体量与响应时序，再看解析与提交路径。",
       "status": "pending"
     },
     {
@@ -568,8 +655,164 @@
     },
     {
       "id": "n4",
-      "content": "继续压测写入路径：把检查点与日志回收的策略细化（例如分段日志与更早的检查点），观察对 T 与 B 两个指标的影响。",
+      "content": "把 WAL 记录从 base64 编码改成二进制格式，缩小日志体积；把提交时每个文件只打开一次的做法固化下来，减少 fsync 次数。",
+      "status": "pending"
+    },
+    {
+      "id": "n5",
+      "content": "如果正式用例确实包含“大量互不相同的长文本”，把 VARCHAR 字典改成磁盘驻留：字典正文按需从磁盘读取，只保留偏移与哈希索引，排序所需的秩表用外部归并排序生成。",
       "status": "pending"
     }
-  ]
+  ],
+  "parallel_work_line": {
+    "scope": "同一场开发里并行推进的另一条实现线（磁盘行存，main.py / engine.py / storage.py / vector_index.py）。它不是本次提交的实现，代码保留在仓库里作为参考；它记录的平台反馈、真实用户发言和实验证据属于同一场开发，因此合并进这份材料。",
+    "submitted_implementation": "本次提交的实现是 minivectordb/ 目录下的列存版本；Dockerfile 启动的是它。",
+    "redaction": "Omitted unrelated earlier tasks, local account details, and credentials. Agent work and user actions are attributed separately.",
+    "user_messages": [
+      {
+        "id": "u1",
+        "source": "student",
+        "content": "这个会很消耗内存吗",
+        "note": ""
+      },
+      {
+        "id": "u2",
+        "source": "student",
+        "content": "docker是不是小型的虚拟机",
+        "note": ""
+      },
+      {
+        "id": "u3",
+        "source": "student",
+        "content": "我把赛题弄下来了，你在读读",
+        "note": ""
+      }
+    ],
+    "experiments": [
+      {
+        "actor": "user",
+        "version": "Earlier container build before the disk row-store change",
+        "command": "python check_container.py",
+        "output": "PASS: Docker startup, vector query, committed data recovery, and shutdown rollback",
+        "source": "User-provided terminal screenshot"
+      },
+      {
+        "actor": "assistant",
+        "version": "Disk row-store implementation",
+        "output": "Public suite: 95 SQL passed",
+        "source": "Local engine regression against public cases"
+      },
+      {
+        "actor": "assistant",
+        "version": "Disk row-store implementation",
+        "output": "PASS: discarded uncommitted changes, interrupted redo, and repeated recovery",
+        "source": "Local process termination with fault injection during recovery"
+      },
+      {
+        "actor": "assistant",
+        "version": "Disk row-store implementation before high-dimensional exact fallback",
+        "output": "10,000 rows written in 38.77 seconds. Cold startup + streaming TopK Python allocation peak: 98137 bytes, row files: 24909966 bytes. ANN recall filtered=False 0.51. ANN recall filtered=True 0.865.",
+        "source": "Local Windows process, seeded 128-dimensional synthetic data, 20 queries per group. Python allocation peak excludes container and filesystem memory.",
+        "follow_up": "Enabled exact search for at least 32 dimensions after the observed ANN recalls fell below 0.95."
+      },
+      {
+        "actor": "user",
+        "version": "Disk row-store implementation with high-dimensional exact fallback",
+        "command": "docker build --platform linux/amd64 -t minivectordb-dev . && python check_container.py --package <official mysqltest directory>",
+        "output": "PASS: 20 public container cases, 95 SQL",
+        "source": "User-provided terminal screenshot after the image build and public container regression."
+      }
+    ],
+    "development_2026_11_11": {
+      "synthetic": false,
+      "scope": "Actual available development interaction and executed local verification only. No student technical explanations have been supplied. Agent design choices must not be attributed to the student. Earlier unrelated competition conversations are excluded.",
+      "user_prompts": [
+        {
+          "source": "student",
+          "content": "完成这个，需要下载东西安装在D盘"
+        },
+        {
+          "source": "student",
+          "content": "https://github.com/bubble-c888/seekdb-2026"
+        }
+      ],
+      "context": {
+        "source": "student-provided task attachment",
+        "content": "Implement MiniVectorDB on seekdb 2026-competition-round2. SQL CRUD, float32 vectors, exact TopK, transactions and crash recovery; JSONL protocol; Dockerfile and real conversation material required."
+      },
+      "agent_work": [
+        {
+          "source": "agent",
+          "content": "Implemented a custom Python standard-library database, durable redo commits, disk transaction overlays, bounded external sorting and coordinate-projection vector index. No SQLite or vector-index library used."
+        }
+      ],
+      "experiments": [
+        {
+          "source": "tool",
+          "status": "executed",
+          "output": "[{\"case\": \"sql_crud\", \"passed\": true, \"statements\": 7}, {\"case\": \"sql_comparisons\", \"passed\": true, \"statements\": 4}, {\"case\": \"sql_ordering\", \"passed\": true, \"statements\": 4}, {\"case\": \"sql_empty\", \"passed\": true, \"statements\": 3}, {\"case\": \"sql_primary_key\", \"passed\": true, \"statements\": 4}, {\"case\": \"sql_unicode\", \"passed\": true, \"statements\": 3}, {\"case\": \"sql_bigint\", \"passed\": true, \"statements\": 3}, {\"case\": \"sql_unsupported\", \"passed\": true, \"statements\": 3}, {\"case\": \"storage_restart\", \"passed\": true, \"statements\": 3}, {\"case\": \"vector_euclidean\", \"passed\": true, \"statements\": 3}, {\"case\": \"transaction_commit\", \"passed\": true, \"statements\": 6}, {\"case\": \"transaction_rollback\", \"passed\": true, \"statements\": 6}, {\"case\": \"storage_mutations\", \"passed\": true, \"statements\": 6}, {\"case\": \"storage_multiple_tables\", \"passed\": true, \"statements\": 6}, {\"case\": \"vector_ties_and_filter\", \"passed\": true, \"statements\": 5}, {\"case\": \"vector_float32\", \"passed\": true, \"statements\": 3}, {\"case\": \"vector_index_maintenance\", \"passed\": true, \"statements\": 9}, {\"case\": \"transaction_failed_insert\", \"passed\": true, \"statements\": 8}, {\"case\": \"transaction_autocommit_atomic\", \"passed\": true, \"statements\": 4}, {\"case\": \"transaction_shutdown_rollback\", \"passed\": true, \"statements\": 5}]"
+        },
+        {
+          "source": "tool",
+          "status": "executed",
+          "output": "PASS: 175 independent filtered TopK checks; 5 force-kill recoveries; statement atomicity; transactional DDL rollback; committed delete durability"
+        },
+        {
+          "source": "GitHub Actions",
+          "status": "executed",
+          "output": "MiniVectorDB preflight run 42988403016 completed with conclusion success. Workflow steps: build submitted source Docker image; official handshake; official public SQL. URL: https://github.com/bubble-c888/seekdb-2026/actions/runs/42988403016"
+        },
+        {
+          "source": "GitHub Actions",
+          "status": "executed",
+          "output": "Integration commit 9db13e1 passed run 42988666245. Linux Docker source build, official handshake and public SQL checks, and independent Linux force-kill recovery/filtered TopK checks all succeeded. https://github.com/bubble-c888/seekdb-2026/actions/runs/42988666245"
+        }
+      ],
+      "limitations": {
+        "content": "Initial local runs used a Windows adapter. Subsequent actual Linux Docker build and official public protocol checks passed on GitHub Actions. Formal 29-case admission, larger-than-memory testing and competition performance remain unverified. No student technical understanding or explanations have been fabricated."
+      }
+    },
+    "timeout_fix_2026_11_11": {
+      "source": "actual development records",
+      "student_feedback": "正确性门槛未通过（失败用例数：1）。原因：JSON response timeout（未及时收到JSON响应，请检查换行、flush和程序阻塞） × 1。未执行Agent Prompt评测。",
+      "agent_change": "Removed per-token copies and scans of the remaining SQL text; trailing whitespace is checked only when tokenization cannot match. Added a large-statement Docker regression using the unchanged official transport and resource limits.",
+      "parser_measurement": {
+        "source": "executed local Python benchmark",
+        "output": "Old/new parsing of the identical 15,480,910-byte, 12,000-row SQL: 96.393 seconds / 0.442 seconds. This is a parser-only comparison, not full insert latency."
+      },
+      "linux_result": {
+        "source": "GitHub Actions run 42992902164",
+        "output": "bulk_rows=12000; sql_bytes=15481803; insert_seconds=8.686; filtered_top1_seconds=0.001. PASS: 12000-row 128D bulk statement; exact row identities; filtered indexed TopK; two forced-kill recoveries. Official public SQL and independent 175 TopK / 5 recovery checks also passed.",
+        "url": "https://github.com/bubble-c888/seekdb-2026/actions/runs/42992902164"
+      },
+      "limitations": "The platform did not identify the failing SQL. Reproducing a real request-timeout cause does not prove it is the only hidden-case failure. A new formal evaluation has not been run."
+    },
+    "large_storage_timeout_fix": {
+      "student_feedback": {
+        "source": "student",
+        "content": "正确性门槛未通过（失败用例数：1）。原因：JSON response timeout（未及时收到JSON响应，请检查换行、flush和程序阻塞） × 1。未执行性能评测。正确性门槛未通过（失败用例数：1）。原因：JSON response timeout（未及时收到JSON响应，请检查换行、flush和程序阻塞） × 1。未执行Agent Prompt评测。还是错的"
+      },
+      "organizer_notice": {
+        "source": "user-supplied screenshot of organizer message",
+        "content": "GitHub seekdb 2026 competition round2分支的MySQLtest文件夹只放出了部分测试，另有隐藏测试集。"
+      },
+      "agent_change": {
+        "source": "agent",
+        "content": "Reproduced a second independent timeout beyond the parser issue. Replaced full-row UPDATE redo with sparse column patches, removed the unused autocommit overlay copy, and added atomic applied-sequence/catalog checkpoints. WAL history is retained and later redo remains idempotent. No request timeout or memory budget was relaxed."
+      },
+      "before": {
+        "source": "GitHub Actions run 42997470561",
+        "output": "Logical live text payload=2228224000 bytes; Docker memory limit=2147483648 bytes. Inserted all 17000 rows. Filtered scan=8.979s; index build=5.973s. UPDATE large SET g = 4 failed with TimeoutError: JSON response timeout under the unchanged 60-second request limit."
+      },
+      "after": {
+        "source": "GitHub Actions run 42999026249",
+        "output": "Same 17000 rows and logical payload under unchanged Docker limits. Full table UPDATE=10.599s; explicit transaction UPDATE=8.483s; COMMIT=4.277s; force-kill/restart succeeded; post-recovery query=4.890s; DELETE=8.585s. PASS larger-than-memory scenario."
+      },
+      "other_checks": {
+        "source": "GitHub Actions run 42999026223 and executed local fault injection",
+        "output": "Official public tests, 12000-row 128D bulk regression and independent 175 filtered TopK / 5 force-kill recovery checks passed. Patch rollback and delete/reinsert checks passed. A process was terminated during committed patch materialization and twice during recovery; final recovery preserved every large text field and correct final values."
+      },
+      "limitations": "Agent designed and executed these tests; no student design, technical explanation or learning outcome is fabricated. The organizer has not identified the official failed SQL. These are independent contract-based scenarios, not recovered hidden inputs. Formal acceptance and performance ranking remain unverified."
+    }
+  }
 }

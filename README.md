@@ -410,7 +410,32 @@ python tools/benchmark.py --mode exact
 
 ---
 
-## 8. 提交材料
+## 8. 仓库里的另一条实现线（参考）
+
+这次开发是两条线并行推进的，仓库里保留了两份实现：
+
+| | 提交的实现 | 参考实现 |
+| --- | --- | --- |
+| 代码 | `minivectordb/`（列存 + numpy） | `main.py` / `engine.py` / `storage.py` / `vector_index.py`（磁盘行存，纯标准库） |
+| 入口 | `python -m minivectordb` | `python main.py --data-dir /data` |
+| Dockerfile | **是**，评测构建的就是它 | 否 |
+| 说明 | 本文件 | `MINIVECTORDB.md` |
+
+参考实现是同一场开发里并行推进的另一条路线：每行一个文件、字段级稀疏补丁、
+重做日志与坐标投影索引，只依赖 Python 标准库。它的价值不在速度
+（同样 10,000 行 × 128 维的写入是 38.77 秒，本实现是 5.42 秒），
+而在于它记录了平台给出的具体失败原因（JSON response timeout），
+并复现出了两个具体场景：15 MB 的一次性 INSERT，以及 17,000 行 × 128 KB 文本
+在全表 UPDATE 时的超时。
+
+`check_bulk.py`、`check_scale.py`、`check_container.py` 使用题包的官方传输层
+并针对**镜像**运行，因此它们检验的是提交的实现；
+`check_recovery.py`、`check_patch_recovery.py`、`check_windows.py` 直接运行
+`main.py`，检验的是参考实现。
+
+---
+
+## 9. 提交材料
 
 * 源码：`minivectordb/`（引擎、解析器、协议层）与 `tools/`、`tests/`；
 * 构建材料：`Dockerfile`（从源码构建，可直接启动评测容器）；

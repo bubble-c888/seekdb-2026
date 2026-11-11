@@ -6,7 +6,8 @@
     "branch": "2026-competition-round2",
     "language": "Python 3.13 + numpy",
     "scope": "本文件记录本次提交版本的开发过程：学生（参赛者）的原始需求与关键判断、Agent 的实现过程、实际执行的验证实验及结果、以及已知限制。全部实验输出均为真实执行结果，未执行的内容明确标注为计划。",
-    "evidence_policy": "student_evidence 字段为学生原话或平台反馈原文；result_evidence 字段为实际执行后的真实输出；agent_explanation 字段是 Agent 的分析与取舍记录。conversations 中所有 user 条目均为真实用户发言，parallel_work_line 段落记录的是同一场开发里并行推进的另一条实现线，其代码作为参考保留在仓库中，但本次提交的实现是 minivectordb/ 下的列存版本。"
+    "evidence_policy": "student_evidence 字段为学生原话或平台反馈原文；result_evidence 字段为实际执行后的真实输出；agent_explanation 字段是 Agent 的分析与取舍记录。conversations 中所有 user 条目均为真实用户发言，parallel_work_line 段落记录的是同一场开发里并行推进的另一条实现线，其代码作为参考保留在仓库中，但本次提交的实现是 minivectordb/ 下的列存版本。",
+    "storage_layout": "应用（Docker Desktop）装在 E:\\Docker；Docker 的镜像与卷（运行产生的数据）放在 E:\\DockerData\\wsl；任务产生的源码、脚本、日志、测试数据与报告放在 E:\\MiniVectorDB。"
   },
   "user_prompts": [
     {
@@ -80,6 +81,12 @@
       "source": "student",
       "content": "这个是需要下载docker吗，那就下载呗，放到E盘里。然后把处理任务产生的数据全部放到G盘里，可以新建文件夹，原来的数据就可以从电脑删除了",
       "note": "学生决定安装 Docker Desktop（装在 E 盘），并要求把任务产生的数据全部迁到 G 盘、删除 E 盘原件。本轮据此安装了 Docker 并把仓库与脚本迁到 G:\\MiniVectorDB。"
+    },
+    {
+      "id": "p13",
+      "source": "student",
+      "content": "不用U盘了，全存E盘",
+      "note": "任务收尾时用户改口：不再使用 U 盘，任务产生的全部数据与 Docker 的运行数据都放在 E 盘。"
     }
   ],
   "conversations": [

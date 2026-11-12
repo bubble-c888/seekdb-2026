@@ -292,6 +292,12 @@ class Database:
                 if column.type == "VARCHAR":
                     table.dictionary(column).flush()
 
+        # 7. the catalog remembers how far the log was applied.  Without this
+        #    a recovery after a crash would have to replay the whole log, and
+        #    the log of a large table does not fit into the time a start may
+        #    take.
+        self.checkpoint()
+
     # ------------------------------------------------------------------
     # helpers used by the executor
     # ------------------------------------------------------------------

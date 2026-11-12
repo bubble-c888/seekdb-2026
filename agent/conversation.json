@@ -553,6 +553,14 @@
       "command": "python -m unittest tests.test_random_queries -v",
       "conclusion": "隐藏用例与公开用例的差别不在语句写法上，而在数据规模和语义组合上；随机差分测试能在没有隐藏用例的情况下把语义组合穷举一遍。",
       "output": "800 轮随机改动与查询（含事务）全部一致：过滤、AND、字符串比较（码点序）、并列按主键升序、LIMIT 与 LIMIT offset,count 的分页、距离的数值、向量的投影、事务内可见性与回滚后的状态，都与朴素实现逐行相同。\n顺带确认了一件对隐藏用例很关键的事：公开用例里所有返回多行的语句都带 ORDER BY，没有一条依赖无序查询的行序——所以题面“未指定 ORDER BY 的结果按集合比较”是成立的。"
+    },
+    {
+      "id": "e31",
+      "question": "准入通过之后，性能还能从哪里拿？",
+      "method": "不再看端到端的数字，而是在评测容器里用同样的限额把写入与查询拆成解析、执行、提交三段，再用 cProfile 看函数级的分布。",
+      "command": "docker run --network=none --cpus=2 --memory=512m --read-only ... python /profile.py; python /cprof.py",
+      "conclusion": "先量再改：解析占了写入的一半，而两个平方复杂度藏在事务里——它们不会体现在公开用例上，却会在“一次事务写很多行”的隐藏用例上变成超时。",
+      "output": "在评测容器里（2 核 / 512 MiB / --read-only / --network=none）把写入与查询拆开计时：写入 6.256 s 里解析占 2.998 s、提交（含 fsync）1.539 s；查询的解析 0.328 ms、执行 1.115 ms。\n第一个原因：词法器逐字符扫描字符串字面量，一批 100 行 × 128 维就是 12,800 个字符。改成用字符串函数找结束引号（带转义时回退到原循环）后，解析降到 0.154 s，写入 3.45 s，容器峰值内存从 101.8 MiB 降到 48.7 MiB，经协议测得的写入从 7.44 s 降到 4.72 s。\n第二个原因：单事务里的两处平方复杂度。主键重复检查每次插入都遍历事务里已插入的所有行，存活位图的补丁每次都遍历所有待定变更；2 万行单事务要 25.1 s，其中 41.4 s 花在重复检查上，已经会撞上单请求 60 秒的时限。改成事务记住自己插入的主键、位图按字节记待定位掩码后，同样 2 万行只要 0.354 s。\n两次改动都由测试套件兜底：词法器的快路径一开始把“双引号转义”的判断写错了，是 test_escaped_quote 把它抓出来的。"
     }
   ],
   "design_decisions": [
@@ -1032,7 +1040,8 @@
         "/design_decisions/8/agent_explanation",
         "/experiments/22/output",
         "/experiments/29/output",
-        "/experiments/28/output"
+        "/experiments/28/output",
+        "/experiments/30/output"
       ],
       "实验与反馈迭代": [
         "/user_prompts/13/content",

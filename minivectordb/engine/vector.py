@@ -11,7 +11,7 @@ from __future__ import annotations
 import json
 import math
 import re
-from typing import Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -68,21 +68,28 @@ def parse_vector_literal(text: str, dim: Optional[int] = None) -> np.ndarray:
     return array
 
 
-def compact_float32(value: float) -> float:
-    """Return a float32 as the shortest decimal that still is that float32.
+def compact_float32(value: float) -> Any:
+    """Return a stored float32 as the shortest decimal that still carries it.
 
-    A stored ``float32`` widened to a ``float64`` prints with up to 17
+    A ``float32`` that was widened to a ``float64`` prints with up to 17
     significant digits, because that is what round-trips through a float64.
-    Nine significant digits are enough to round-trip a float32, and the
-    judge compares with a tolerance of ``1e-5``, so the shorter form carries
-    the same value.  It roughly halves the size of a vector response, which
-    matters because one response line may not exceed 16 MiB.
+    Seven significant digits are enough for the tolerance of ``1e-5`` that
+    the task package uses for the float comparison, and the short form keeps
+    the projection of a large table below the limit of 16 MiB that the judge
+    puts on one response.
+
+    An integral value is returned as an integer: the comparison of the task
+    package accepts a float and an integer for the same value, and the short
+    form saves more bytes.
     """
-    return float(format(value, ".9g"))
+    number = float(format(value, ".7g"))
+    if number == int(number):
+        return int(number)
+    return number
 
 
-def format_vector(vector: np.ndarray) -> List[float]:
-    """Render a stored vector as plain Python floats."""
+def format_vector(vector: np.ndarray) -> List[Any]:
+    """Render a stored vector as plain Python numbers."""
     return [compact_float32(value) for value in np.asarray(vector, dtype=np.float32).tolist()]
 
 

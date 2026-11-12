@@ -89,6 +89,8 @@ class Database:
             self.checkpoint()
         finally:
             self.wal.close()
+            for table in self.tables.values():
+                table.close()
 
     # ------------------------------------------------------------------
     # recovery
@@ -279,6 +281,16 @@ class Database:
             cache_invalidate(self.store, key)
         if keys:
             self.store.fsync(keys)
+
+        # 6. the values of the dictionary are in the files now, they are read
+        #    from there instead of from the memory
+        for name, overlay in txn.overlays.items():
+            table = self.tables.get(name)
+            if table is None:
+                continue
+            for column in table.columns:
+                if column.type == "VARCHAR":
+                    table.dictionary(column).flush()
 
     # ------------------------------------------------------------------
     # helpers used by the executor

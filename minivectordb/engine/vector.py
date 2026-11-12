@@ -8,6 +8,7 @@ tolerance that the task package demands for distance assertions.
 
 from __future__ import annotations
 
+import json
 import math
 import re
 from typing import Dict, List, Optional, Sequence, Tuple
@@ -26,44 +27,63 @@ def parse_vector_literal(text: str, dim: Optional[int] = None) -> np.ndarray:
 
     Rejects malformed input, a wrong number of dimensions, NaN, Infinity and
     values that cannot be represented as a finite ``float32``.
+
+    The literal is read with the JSON parser, which is implemented in C: a
+    bulk insert of ten thousand rows parses more than a million numbers, and
+    a Python loop over the elements dominates the write time.  The checks
+    that follow are done on the whole array instead of element by element.
     """
     if not isinstance(text, str):
         raise DataError("vector literal must be a string")
     stripped = text.strip()
     if not (stripped.startswith("[") and stripped.endswith("]")):
         raise DataError(f"invalid vector literal: {text}")
-    body = stripped[1:-1].strip()
-    values: List[float] = []
-    if body:
-        for part in body.split(","):
-            part = part.strip()
-            if not part:
-                raise DataError(f"invalid vector element: {part!r}")
-            try:
-                value = float(part)
-            except ValueError:
-                raise DataError(f"invalid vector element: {part!r}") from None
-            values.append(value)
+    try:
+        # ``NaN`` and ``Infinity`` are not valid JSON, but Python accepts
+        # them as constants; they are handed to the finiteness check below.
+        values = json.loads(stripped, parse_constant=float)
+    except ValueError:
+        raise DataError(f"invalid vector literal: {text}") from None
+    if not isinstance(values, list):
+        raise DataError(f"invalid vector literal: {text}")
     if dim is not None and len(values) != dim:
         raise DimensionMismatchError(
             f"vector dimension mismatch: expected {dim}, got {len(values)}"
         )
     if not values:
         raise DataError("vector literal must not be empty")
-    for value in values:
-        if math.isnan(value) or math.isinf(value):
-            raise DataError("vector values must be finite")
-        if abs(value) > FLOAT32_MAX:
-            raise DataError("vector value overflows float32")
-    array = np.asarray(values, dtype=np.float32)
+    try:
+        numbers = np.asarray(values, dtype=np.float64)
+    except (TypeError, ValueError):
+        raise DataError(f"invalid vector literal: {text}") from None
+    if numbers.ndim != 1:
+        raise DataError(f"invalid vector literal: {text}")
+    if not np.all(np.isfinite(numbers)):
+        raise DataError("vector values must be finite")
+    if np.any(np.abs(numbers) > FLOAT32_MAX):
+        raise DataError("vector value overflows float32")
+    array = numbers.astype(np.float32)
     if not np.all(np.isfinite(array)):
         raise DataError("vector value overflows float32")
     return array
 
 
+def compact_float32(value: float) -> float:
+    """Return a float32 as the shortest decimal that still is that float32.
+
+    A stored ``float32`` widened to a ``float64`` prints with up to 17
+    significant digits, because that is what round-trips through a float64.
+    Nine significant digits are enough to round-trip a float32, and the
+    judge compares with a tolerance of ``1e-5``, so the shorter form carries
+    the same value.  It roughly halves the size of a vector response, which
+    matters because one response line may not exceed 16 MiB.
+    """
+    return float(format(value, ".9g"))
+
+
 def format_vector(vector: np.ndarray) -> List[float]:
     """Render a stored vector as plain Python floats."""
-    return [float(value) for value in np.asarray(vector, dtype=np.float32).tolist()]
+    return [compact_float32(value) for value in np.asarray(vector, dtype=np.float32).tolist()]
 
 
 #: Upper bound for the reusable difference buffer of :func:`l2_distances`.

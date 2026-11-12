@@ -11,7 +11,7 @@ from __future__ import annotations
 import os
 import struct
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Sequence, Tuple
+from typing import Any, Dict, Iterator, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -106,82 +106,140 @@ class StringDictionary:
     index holding the offset of every code.  New strings that are introduced by
     a transaction stay *pending* until that transaction commits, so an aborted
     transaction never leaves a code in the column files that has no blob.
+
+    The blobs stay on the disk.  A table may hold more text than the memory
+    budget of the container allows, so the dictionary keeps only the offsets
+    and a hash index in memory and reads the values back when they are
+    needed.  A small cache holds the values that are used often.
     """
+
+    #: How many bytes of the dictionary may be kept in the memory cache.
+    CACHE_BYTES = int(os.environ.get("MINIVECTORDB_DICT_CACHE_BYTES", str(4 * 1024 * 1024)))
 
     def __init__(self, store: FileStore, data_key: str, index_key: str):
         self.store = store
         self.data_key = data_key
         self.index_key = index_key
-        self.strings: List[str] = []
-        self.codes: Dict[str, int] = {}
+        self.offsets: List[int] = []
+        self.hashes: Dict[int, int] = {}
+        self._pending: Dict[int, str] = {}
+        self._cache: Dict[int, str] = {}
+        self._cache_bytes = 0
+        self._handle = None
         self._rank: Optional[np.ndarray] = None
         self._sorted: List[str] = []
         self.load()
 
     # -- persistence ----------------------------------------------------
     def load(self) -> None:
-        self.strings = []
-        self.codes = {}
+        self.offsets = []
+        self.hashes = {}
+        self._pending = {}
+        self._cache = {}
+        self._cache_bytes = 0
+        self._dirty()
         offsets = self.store.read_all(self.index_key)
         if not offsets:
-            self._dirty()
             return
         count = len(offsets) // 8
-        blob = self.store.read_all(self.data_key)
-        for code in range(count):
-            offset = struct.unpack_from("<Q", offsets, code * 8)[0]
-            length = struct.unpack_from("<I", blob, offset)[0]
-            raw = blob[offset + 4 : offset + 4 + length]
-            text = raw.decode("utf-8")
-            self.strings.append(text)
-            self.codes[text] = code
-        self._dirty()
+        self.offsets = [
+            struct.unpack_from("<Q", offsets, index * 8)[0] for index in range(count)
+        ]
+        for code, raw in self._stream():
+            self.hashes[hash(raw)] = code
+
+    def _stream(self) -> Iterator[Tuple[int, bytes]]:
+        """Every value of the dictionary, in the order of the codes."""
+        path = self.store.path(self.data_key)
+        if not path.exists():
+            return
+        with open(path, "rb", buffering=1 << 20) as handle:
+            position = 0
+            for code, offset in enumerate(self.offsets):
+                if offset != position:
+                    handle.seek(offset)
+                header = handle.read(4)
+                if len(header) < 4:
+                    return
+                length = struct.unpack("<I", header)[0]
+                raw = handle.read(length)
+                if len(raw) < length:
+                    return
+                position = offset + 4 + length
+                yield code, raw
 
     # -- lookups --------------------------------------------------------
     def __len__(self) -> int:
-        return len(self.strings)
+        return len(self.offsets)
 
     def code_of(self, text: str) -> Optional[int]:
-        return self.codes.get(text)
+        """The code of ``text``, or ``None`` when the value is unknown."""
+        raw = text.encode("utf-8")
+        code = self.hashes.get(hash(raw))
+        if code is None:
+            return None
+        if self._raw(code) == raw:
+            return code
+        # Two different values share a hash: look for the value itself.
+        for candidate in range(len(self.offsets)):
+            if self._raw(candidate) == raw:
+                return candidate
+        return None
 
     def text_of(self, code: int) -> str:
-        return self.strings[code]
+        """The value of ``code``."""
+        cached = self._cache.get(code)
+        if cached is not None:
+            return cached
+        pending = self._pending.get(code)
+        if pending is not None:
+            return pending
+        text = self._raw(code).decode("utf-8")
+        self._remember(code, text)
+        return text
+
+    def _raw(self, code: int) -> bytes:
+        """The bytes of ``code`` as they are stored in the blob."""
+        if code < 0 or code >= len(self.offsets):
+            return b""
+        handle = self._read_handle()
+        if handle is None:
+            return b""
+        handle.seek(self.offsets[code])
+        header = handle.read(4)
+        if len(header) < 4:
+            return b""
+        length = struct.unpack("<I", header)[0]
+        return handle.read(length)
+
+    def _read_handle(self):
+        """A read handle on the blob, opened when it is first needed."""
+        if self._handle is None:
+            path = self.store.path(self.data_key)
+            if path.exists():
+                self._handle = open(path, "rb", buffering=1 << 20)
+        return self._handle
+
+    def _remember(self, code: int, text: str) -> None:
+        """Keep a value in the memory cache."""
+        if self._cache_bytes >= self.CACHE_BYTES:
+            self._cache = {}
+            self._cache_bytes = 0
+        self._cache[code] = text
+        self._cache_bytes += len(text)
 
     def _dirty(self) -> None:
         self._rank = None
         self._sorted = []
 
-    def rank_table(self, extra: Sequence[str] = ()) -> Tuple[np.ndarray, List[str]]:
-        """Return ``(rank per code, sorted strings)``.
-
-        ``extra`` holds strings that are only visible inside the current
-        transaction; they take part in the ordering so that comparisons stay
-        consistent with the rows that the transaction inserted.
-        """
-        if self._rank is None or extra:
-            merged = sorted(set(self.strings) | set(extra))
-            rank = np.zeros(len(self.strings) + len(extra), dtype=np.int32)
-            for position, text in enumerate(merged):
-                code = self.codes.get(text)
-                if code is not None:
-                    rank[code] = position
-                else:
-                    offset = len(self.strings) + list(extra).index(text)
-                    rank[offset] = position
-            if extra:
-                return rank, merged
-            self._rank = rank
-            self._sorted = merged
-            return rank, merged
-        return self._rank, self._sorted
-
     def pending_code(self, text: str, pending: Dict[str, int]) -> int:
-        """Return a provisional code for a string that is not committed yet."""
-        if text in self.codes:
-            return self.codes[text]
+        """A provisional code for a string that is not committed yet."""
+        code = self.code_of(text)
+        if code is not None:
+            return code
         if text in pending:
             return pending[text]
-        code = len(self.strings) + len(pending)
+        code = len(self.offsets) + len(pending)
         pending[text] = code
         return code
 
@@ -194,9 +252,51 @@ class StringDictionary:
             self.index_key, self.store.size(self.index_key)
         )
         writes.add(self.index_key, index_offset, struct.pack("<Q", offset))
-        self.strings.append(text)
-        self.codes[text] = len(self.strings) - 1
+        code = len(self.offsets)
+        self.offsets.append(offset)
+        self.hashes[hash(blob)] = code
+        # The value is not in the blob yet, the commit writes it there.
+        self._pending[code] = text
         self._dirty()
+
+    def flush(self) -> None:
+        """Forget the values that the last commit has written to the files."""
+        self._pending = {}
+
+    def close(self) -> None:
+        """Release the read handle on the blob."""
+        if self._handle is not None:
+            self._handle.close()
+            self._handle = None
+
+    # -- ordering -------------------------------------------------------
+    def rank_table(self, extra: Sequence[str] = ()) -> Tuple[np.ndarray, List[str]]:
+        """Return ``(rank per code, sorted strings)``.
+
+        ``extra`` holds strings that are only visible inside the current
+        transaction; they take part in the ordering so that comparisons stay
+        consistent with the rows that the transaction inserted.
+        """
+        if self._rank is None or extra:
+            values = [self.text_of(code) for code in range(len(self.offsets))]
+            last_code: Dict[str, int] = {}
+            for code, text in enumerate(values):
+                last_code[text] = code
+            merged = sorted(set(values) | set(extra))
+            rank = np.zeros(len(values) + len(extra), dtype=np.int32)
+            for position, text in enumerate(merged):
+                code = last_code.get(text)
+                if code is not None:
+                    rank[code] = position
+                else:
+                    offset = len(values) + list(extra).index(text)
+                    rank[offset] = position
+            if extra:
+                return rank, merged
+            self._rank = rank
+            self._sorted = merged
+            return rank, merged
+        return self._rank, self._sorted
 
 
 class PrimaryKeyIndex:
@@ -320,6 +420,12 @@ class Table:
         self.indexes: Dict[str, Dict[str, Any]] = {}
         # The alive bitmap is kept in memory; it mirrors ``alive.bits`` on disk.
         self.alive = bytearray()
+
+    def close(self) -> None:
+        """Release the file handles of the dictionaries."""
+        for dictionary in self.dictionaries.values():
+            dictionary.close()
+        self.dictionaries = {}
 
     # -- metadata -------------------------------------------------------
     def to_meta(self) -> Dict[str, Any]:

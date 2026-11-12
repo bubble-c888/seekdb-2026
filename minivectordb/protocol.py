@@ -82,7 +82,11 @@ class Protocol:
     def write_message(self, payload: Dict[str, Any]) -> None:
         """Write one protocol message and flush it immediately."""
         data = json.dumps(
-            _sanitize(payload), ensure_ascii=False, allow_nan=False, default=str
+            _sanitize(payload),
+            ensure_ascii=False,
+            allow_nan=False,
+            default=str,
+            separators=(",", ":"),
         )
         self.stdout.write(data)
         self.stdout.write("\n")

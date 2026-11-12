@@ -64,6 +64,9 @@ class ComparisonTerm:
     literal: Any
     rank_array: Optional[np.ndarray] = None
     target_rank: int = 0
+    #: The code of the literal for an equality test.  Comparing the codes is
+    #: enough for ``=`` and does not need the order of the values.
+    target_code: Optional[int] = None
     #: False when a string literal is not part of the dictionary: such a value
     #: can only be compared with an ordering operator, an equality never
     #: matches.
@@ -494,22 +497,49 @@ class Executor:
                 text = str(literal.value)
                 dictionary = table.dictionary(column)
                 pending = self._pending_strings(table, column)
-                rank, merged = dictionary.rank_table(pending)
-                target_rank = bisect.bisect_left(merged, text)
-                compiled.append(
-                    ComparisonTerm(
-                        column=column,
-                        op=op,
-                        literal=text,
-                        rank_array=rank,
-                        target_rank=target_rank,
-                        # A literal that is not part of the dictionary matches
-                        # no row at all, the insertion point of the sorted
-                        # dictionary must not be mistaken for its rank.
-                        exact_match=text in merged,
+                if op == "=":
+                    # An equality test only needs the code of the literal,
+                    # the order of the values is not needed and a table with
+                    # more text than the memory budget must not be sorted.
+                    code = dictionary.code_of(text)
+                    if code is None:
+                        code = self._pending_code(table, column, text)
+                    compiled.append(
+                        ComparisonTerm(
+                            column=column,
+                            op="=",
+                            literal=text,
+                            target_code=code,
+                        )
                     )
-                )
+                else:
+                    rank, merged = dictionary.rank_table(pending)
+                    target_rank = bisect.bisect_left(merged, text)
+                    compiled.append(
+                        ComparisonTerm(
+                            column=column,
+                            op=op,
+                            literal=text,
+                            rank_array=rank,
+                            target_rank=target_rank,
+                            # A literal that is not part of the dictionary matches
+                            # no row at all, the insertion point of the sorted
+                            # dictionary must not be mistaken for its rank.
+                            exact_match=text in merged,
+                        )
+                    )
         return compiled
+
+    def _pending_code(
+        self, table: Table, column: ColumnSpec, text: str
+    ) -> Optional[int]:
+        """The provisional code of a value that the transaction introduced."""
+        if self.db.txn is None:
+            return None
+        overlay = self.db.txn.overlays.get(table.name.lower())
+        if overlay is None:
+            return None
+        return overlay.pending_strings.get(column.key, {}).get(text)
 
     def _pending_strings(self, table: Table, column: ColumnSpec) -> List[str]:
         if self.db.txn is None:
@@ -553,21 +583,22 @@ class Executor:
                 mask = mask & part
             else:
                 codes = table.read_column(term.column, start, count)
-                safe = np.where(codes >= 0, codes, 0)
-                ranks = term.rank_array[safe]
                 if term.op == "=":
-                    if not term.exact_match:
+                    if term.target_code is None:
                         part = np.zeros(count, dtype=bool)
                     else:
-                        part = ranks == term.target_rank
-                elif term.op == "<":
-                    part = ranks < term.target_rank
-                elif term.op == "<=":
-                    part = ranks <= term.target_rank
-                elif term.op == ">":
-                    part = ranks > term.target_rank
+                        part = codes == term.target_code
                 else:
-                    part = ranks >= term.target_rank
+                    safe = np.where(codes >= 0, codes, 0)
+                    ranks = term.rank_array[safe]
+                    if term.op == "<":
+                        part = ranks < term.target_rank
+                    elif term.op == "<=":
+                        part = ranks <= term.target_rank
+                    elif term.op == ">":
+                        part = ranks > term.target_rank
+                    else:
+                        part = ranks >= term.target_rank
                 mask = mask & part & (codes >= 0)
         return mask
 
@@ -635,29 +666,30 @@ class Executor:
                     ok = int(value) >= int(term.literal)
             else:
                 text = str(value)
-                if term.op == "=" and not term.exact_match:
-                    # The literal is not part of the dictionary, it cannot
-                    # match any row.
-                    return False
                 dictionary = table.dictionary(term.column)
-                pending = self._pending_strings(table, term.column)
-                rank, merged = dictionary.rank_table(pending)
                 code = dictionary.code_of(text)
                 if code is None and overlay is not None:
                     code = overlay.pending_strings.get(term.column.key, {}).get(text)
-                if code is None:
-                    return False
-                value_rank = int(rank[code])
                 if term.op == "=":
-                    ok = value_rank == term.target_rank
-                elif term.op == "<":
-                    ok = value_rank < term.target_rank
-                elif term.op == "<=":
-                    ok = value_rank <= term.target_rank
-                elif term.op == ">":
-                    ok = value_rank > term.target_rank
+                    if term.target_code is None or code is None:
+                        # The literal is not part of the dictionary, it cannot
+                        # match any row.
+                        return False
+                    ok = code == term.target_code
                 else:
-                    ok = value_rank >= term.target_rank
+                    pending = self._pending_strings(table, term.column)
+                    rank, merged = dictionary.rank_table(pending)
+                    if code is None:
+                        return False
+                    value_rank = int(rank[code])
+                    if term.op == "<":
+                        ok = value_rank < term.target_rank
+                    elif term.op == "<=":
+                        ok = value_rank <= term.target_rank
+                    elif term.op == ">":
+                        ok = value_rank > term.target_rank
+                    else:
+                        ok = value_rank >= term.target_rank
             if not ok:
                 return False
         return True

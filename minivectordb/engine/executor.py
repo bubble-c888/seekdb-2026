@@ -228,6 +228,8 @@ class Executor:
                     self.db.check_primary_key(table, int(key))
                 slot = self.db.allocate_slot(table)
                 table.plan_insert(slot, values, writes, statement_overlay)
+                if primary_key is not None:
+                    statement_overlay.inserted_keys[int(key)] = slot
                 self._plan_index_append(table, slot, values)
                 affected += 1
         except Exception:
@@ -1296,6 +1298,13 @@ class Executor:
         target.new_slots.extend(source.new_slots)
         target.freed_slots.extend(source.freed_slots)
         target.alive_changes.update(source.alive_changes)
+        target.inserted_keys.update(source.inserted_keys)
+        for byte_index, mask in source.alive_set.items():
+            target.alive_set[byte_index] = target.alive_set.get(byte_index, 0) | mask
+        for byte_index, mask in source.alive_clear.items():
+            target.alive_clear[byte_index] = (
+                target.alive_clear.get(byte_index, 0) | mask
+            )
         for key, pending in source.pending_strings.items():
             target.pending_strings.setdefault(key, {}).update(pending)
         for key, texts in source.pending_new_strings.items():

@@ -340,9 +340,6 @@ class Database:
             overlay = self.txn.overlays.get(table.name.lower())
             if overlay is None:
                 return
-            pk_column = table.primary_key.lower()
-            for slot, values in overlay.rows.items():
-                if slot == exclude_slot or slot in overlay.deleted:
-                    continue
-                if pk_column in values and int(values[pk_column]) == key:
-                    raise DuplicateKeyError(f"duplicate entry for primary key {key}")
+            slot = overlay.inserted_keys.get(key)
+            if slot is not None and slot != exclude_slot and slot not in overlay.deleted:
+                raise DuplicateKeyError(f"duplicate entry for primary key {key}")

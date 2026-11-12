@@ -391,6 +391,15 @@ class TableOverlay:
     pending_new_strings: Dict[str, List[str]] = field(default_factory=dict)
     inserted: set = field(default_factory=set)
     alive_changes: Dict[int, bool] = field(default_factory=dict)
+    #: The pending alive changes per byte: the bits that the transaction set
+    #: and the bits that it cleared.  They are kept per byte so that patching
+    #: one row does not have to walk over every pending change.
+    alive_set: Dict[int, int] = field(default_factory=dict)
+    alive_clear: Dict[int, int] = field(default_factory=dict)
+    #: The primary keys that the transaction inserted: key -> slot.  It keeps
+    #: the duplicate check of a large transaction from walking over every
+    #: row that was inserted before.
+    inserted_keys: Dict[int, int] = field(default_factory=dict)
     index_appends: List[Tuple[Any, int, Any]] = field(default_factory=list)
 
 
@@ -731,18 +740,24 @@ class Table:
         """
         byte_index, bit_index = divmod(slot, 8)
         current = self.alive[byte_index] if byte_index < len(self.alive) else 0
-        for other, state in overlay.alive_changes.items():
-            other_byte, other_bit = divmod(other, 8)
-            if other_byte != byte_index:
-                continue
-            if state:
-                current |= 1 << other_bit
-            else:
-                current &= ~(1 << other_bit) & 0xFF
+        current |= overlay.alive_set.get(byte_index, 0)
+        current &= ~(overlay.alive_clear.get(byte_index, 0)) & 0xFF
         if alive:
             current |= 1 << bit_index
+            overlay.alive_set[byte_index] = (
+                overlay.alive_set.get(byte_index, 0) | (1 << bit_index)
+            )
+            overlay.alive_clear[byte_index] = (
+                overlay.alive_clear.get(byte_index, 0) & ~(1 << bit_index)
+            )
         else:
             current &= ~(1 << bit_index) & 0xFF
+            overlay.alive_set[byte_index] = (
+                overlay.alive_set.get(byte_index, 0) & ~(1 << bit_index)
+            )
+            overlay.alive_clear[byte_index] = (
+                overlay.alive_clear.get(byte_index, 0) | (1 << bit_index)
+            )
         writes.add(self.alive_key, byte_index, bytes([current]))
         overlay.alive_changes[slot] = alive
 

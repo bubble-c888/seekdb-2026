@@ -1,0 +1,4 @@
+CREATE TABLE docs (id BIGINT PRIMARY KEY, content VARCHAR(16));
+INSERT INTO docs VALUES (1, 'alpha'),(2, 'beta'),(3, 'gamma');
+SELECT id FROM docs WHERE content > 'beta';
+SELECT id FROM docs WHERE content <= 'beta';

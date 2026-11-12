@@ -41,6 +41,10 @@ def main(argv=None) -> int:
     )
     parser.add_argument("--image", help="run the cases against a built Docker image")
     parser.add_argument(
+        "--package",
+        help="directory of the task package (default: the mysqltest directory)",
+    )
+    parser.add_argument(
         "--program",
         default="{} -m minivectordb --data-dir {{data_dir}}".format(sys.executable),
         help="the local program, {data_dir} is replaced by the data directory",
@@ -49,6 +53,8 @@ def main(argv=None) -> int:
     arguments = parser.parse_args(argv)
 
     checker_argv = ["--output", arguments.output]
+    if arguments.package:
+        checker_argv += ["--package", arguments.package]
     if arguments.image:
         checker_argv += ["--image", arguments.image]
     else:

@@ -1,0 +1,3 @@
+CREATE TABLE docs (id BIGINT, content VARCHAR(16), PRIMARY KEY (id));
+INSERT INTO docs VALUES (1, 'x');
+SELECT id FROM docs;

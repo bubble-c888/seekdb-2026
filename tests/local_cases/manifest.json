@@ -1,0 +1,132 @@
+{
+  "version": "minivectordb-local-v1",
+  "scope": "local",
+  "cases": [
+    {
+      "id": "sql_null",
+      "group": "local",
+      "test": "cases/sql_null.test",
+      "result": "cases/sql_null.result",
+      "statements": 3
+    },
+    {
+      "id": "sql_join",
+      "group": "local",
+      "test": "cases/sql_join.test",
+      "result": "cases/sql_join.result",
+      "statements": 3
+    },
+    {
+      "id": "sql_aggregate",
+      "group": "local",
+      "test": "cases/sql_aggregate.test",
+      "result": "cases/sql_aggregate.result",
+      "statements": 3
+    },
+    {
+      "id": "sql_subquery",
+      "group": "local",
+      "test": "cases/sql_subquery.test",
+      "result": "cases/sql_subquery.result",
+      "statements": 3
+    },
+    {
+      "id": "sql_foreign_key",
+      "group": "local",
+      "test": "cases/sql_foreign_key.test",
+      "result": "cases/sql_foreign_key.result",
+      "statements": 2
+    },
+    {
+      "id": "sql_nested_transaction",
+      "group": "local",
+      "test": "cases/sql_nested_transaction.test",
+      "result": "cases/sql_nested_transaction.result",
+      "statements": 3
+    },
+    {
+      "id": "sql_update_primary_key",
+      "group": "local",
+      "test": "cases/sql_update_primary_key.test",
+      "result": "cases/sql_update_primary_key.result",
+      "statements": 4
+    },
+    {
+      "id": "sql_limit_forms",
+      "group": "local",
+      "test": "cases/sql_limit_forms.test",
+      "result": "cases/sql_limit_forms.result",
+      "statements": 5
+    },
+    {
+      "id": "sql_select_star",
+      "group": "local",
+      "test": "cases/sql_select_star.test",
+      "result": "cases/sql_select_star.result",
+      "statements": 3
+    },
+    {
+      "id": "sql_insert_column_list",
+      "group": "local",
+      "test": "cases/sql_insert_column_list.test",
+      "result": "cases/sql_insert_column_list.result",
+      "statements": 3
+    },
+    {
+      "id": "sql_table_primary_key",
+      "group": "local",
+      "test": "cases/sql_table_primary_key.test",
+      "result": "cases/sql_table_primary_key.result",
+      "statements": 3
+    },
+    {
+      "id": "sql_string_order",
+      "group": "local",
+      "test": "cases/sql_string_order.test",
+      "result": "cases/sql_string_order.result",
+      "statements": 3
+    },
+    {
+      "id": "sql_string_compare",
+      "group": "local",
+      "test": "cases/sql_string_compare.test",
+      "result": "cases/sql_string_compare.result",
+      "statements": 4
+    },
+    {
+      "id": "sql_case_insensitive",
+      "group": "local",
+      "test": "cases/sql_case_insensitive.test",
+      "result": "cases/sql_case_insensitive.result",
+      "statements": 3
+    },
+    {
+      "id": "sql_vector_projection",
+      "group": "local",
+      "test": "cases/sql_vector_projection.test",
+      "result": "cases/sql_vector_projection.result",
+      "statements": 3
+    },
+    {
+      "id": "transaction_visibility",
+      "group": "local",
+      "test": "cases/transaction_visibility.test",
+      "result": "cases/transaction_visibility.result",
+      "statements": 9
+    },
+    {
+      "id": "transaction_vector_visibility",
+      "group": "local",
+      "test": "cases/transaction_vector_visibility.test",
+      "result": "cases/transaction_vector_visibility.result",
+      "statements": 7
+    },
+    {
+      "id": "transaction_commit_visibility",
+      "group": "local",
+      "test": "cases/transaction_commit_visibility.test",
+      "result": "cases/transaction_commit_visibility.result",
+      "statements": 6
+    }
+  ]
+}

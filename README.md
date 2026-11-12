@@ -415,6 +415,14 @@ python tools/run_case.py --case sql_crud  # 单个用例
 python tools/run_case.py --verbose        # 打印每条语句的请求与响应
 ```
 
+公开用例之外，`tests/local_cases/` 里还有 18 个按赛题原文写的补充用例
+（预期全部手写），覆盖公开用例没走到的分页写法、投影、表级主键、
+字符串比较与排序、标识符大小写，以及事务内能不能看到自己的修改：
+
+```bash
+python tools/run_checker.py --package tests/local_cases --output runs/local
+```
+
 `tools/run_case.py` 为每个用例新建独立的数据目录，把 `.test` 文件里的 SQL
 逐条包装成 `execute` 请求发给程序，把响应与 `.result` 中同位置的断言比较
 （浮点按 1e-5 的绝对与相对误差比较，未标记 `unordered` 的结果按顺序比较，

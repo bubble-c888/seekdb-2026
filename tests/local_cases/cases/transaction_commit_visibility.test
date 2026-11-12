@@ -1,0 +1,6 @@
+CREATE TABLE docs (id BIGINT PRIMARY KEY, content VARCHAR(16));
+BEGIN;
+INSERT INTO docs VALUES (1, 'x');
+SELECT id FROM docs;
+COMMIT;
+SELECT id FROM docs;

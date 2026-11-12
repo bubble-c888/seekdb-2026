@@ -467,6 +467,14 @@
       "conclusion": "恢复时间计入启动时间（上限 120 秒），所以检查点必须跟着提交前进；这是用 3% 的写入时间换大表上的恢复时间。"
     },
     {
+      "id": "e30",
+      "question": "公开用例没覆盖到的写法与组合，自己造一批用例能不能查出来？",
+      "method": "按赛题原文的两条清单（必须支持的能力、必须报错的语句）自己写 18 个用例，放在题包同样的 .test/.result 格式里，预期结果全部手写；用题包自带的检查器 protocol_check/run.py 跑。",
+      "command": "python3 protocol_check/run.py --image <镜像> --package tests/local_cases --output protocol-results/local",
+      "result_evidence": "18 个自造用例全部 PASS：NULL、JOIN、聚合、子查询、外键、嵌套事务、主键更新七类必须报错的语句都返回了错误且连接仍然可用；LIMIT n、LIMIT offset,n、LIMIT n OFFSET m 三种分页、SELECT *、带列名的 INSERT、表级主键、字符串按码点序排序与大小比较、标识符不区分大小写、向量投影的格式都符合预期；事务内插入、删除、改向量后立刻查询都能看到自己的修改，ROLLBACK 之后恢复原状。\n第一次跑有 3 个用例失败，查下来全是预期写错了（第一条 BEGIN 本该成功、LIMIT 1 OFFSET 2 我多写了一行、字符串序按汉字算但用例里是 ASCII），实现是对的。",
+      "conclusion": "平台不给失败信息时，能做的就是把题面读成用例；手写预期还能反过来检查自己是不是也理解错了题面（这次就有三个预期是我自己写错的）。"
+    },
+    {
       "id": "e29",
       "question": "公开用例只是样本，还有哪些语义差异是它们看不出来的？",
       "method": "写了一个朴素参考实现：行是一个元组列表，每条查询都用 Python 循环求值（过滤、AND、并列排序、带偏移的分页、距离）；随机地增删改，随机地提问，把两边的答案逐行比较。查询还会在事务里执行，检查事务内可见性与回滚后的状态。",
@@ -578,13 +586,23 @@
       ]
     },
     {
+      "id": "d12",
+      "topic": "把赛题原文变成可执行的补充用例，预期手写",
+      "student_evidence": "https://oceanbase.yuque.com/org-wiki-obtech-vh7w9r/hc3pio/lg8enxlmwg69unt6 完成这个链接的任务，必须都符合要求。拿不准的事情问我，你做不了的指导我做，最后交付给我Commit id和Branch",
+      "student_evidence_pointer": "/user_prompts/0/content",
+      "student_evidence_note": "正式用例共 29 个、公开 20 个，隐藏的那 9 个不公开输入和预期，平台也不给失败类别。",
+      "result_evidence": "18 个自造用例全部 PASS：NULL、JOIN、聚合、子查询、外键、嵌套事务、主键更新七类必须报错的语句都返回了错误且连接仍然可用；LIMIT n、LIMIT offset,n、LIMIT n OFFSET m 三种分页、SELECT *、带列名的 INSERT、表级主键、字符串按码点序排序与大小比较、标识符不区分大小写、向量投影的格式都符合预期；事务内插入、删除、改向量后立刻查询都能看到自己的修改，ROLLBACK 之后恢复原状。\n第一次跑有 3 个用例失败，查下来全是预期写错了（第一条 BEGIN 本该成功、LIMIT 1 OFFSET 2 我多写了一行、字符串序按汉字算但用例里是 ASCII），实现是对的。",
+      "result_evidence_pointer": "/experiments/28/result_evidence",
+      "agent_explanation": "既然拿不到隐藏用例，就按题面自己写：七类必须报错的语句各一个用例，再把公开用例没写过的分页、投影、表级主键、字符串比较、大小写、事务内可见性各写一个。预期手写是关键——如果预期是从实现上抄的，这个用例只能证明实现和自己一致，证明不了语义。"
+    },
+    {
       "id": "d11",
       "topic": "用朴素参考实现做随机差分，而不是只跑公开用例",
       "student_evidence": "https://oceanbase.yuque.com/org-wiki-obtech-vh7w9r/hc3pio/lg8enxlmwg69unt6 完成这个链接的任务，必须都符合要求。拿不准的事情问我，你做不了的指导我做，最后交付给我Commit id和Branch",
       "student_evidence_pointer": "/user_prompts/0/content",
       "student_evidence_note": "正式用例共 29 个、公开 20 个，隐藏的那部分不给输入也不给预期，只能自己想办法把语义验全。",
       "result_evidence": "800 轮随机改动与查询（含事务）全部一致：过滤、AND、字符串比较（码点序）、并列按主键升序、LIMIT 与 LIMIT offset,count 的分页、距离的数值、向量的投影、事务内可见性与回滚后的状态，都与朴素实现逐行相同。\n顺带确认了一件对隐藏用例很关键的事：公开用例里所有返回多行的语句都带 ORDER BY，没有一条依赖无序查询的行序——所以题面“未指定 ORDER BY 的结果按集合比较”是成立的。",
-      "result_evidence_pointer": "/experiments/28/result_evidence",
+      "result_evidence_pointer": "/experiments/29/result_evidence",
       "agent_explanation": "这一轮找到的事务可见性缺陷，公开用例 20/20 全绿也发现不了；随机差分测试的价值不在于比公开用例更全，而在于它把“数据 × 语句 × 组合”随机地铺开，包括公开用例从来不碰的组合（带偏移的分页、事务中间查询、向量投影的数值）。"
     },
     {

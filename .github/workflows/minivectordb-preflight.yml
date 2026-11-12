@@ -18,6 +18,8 @@ jobs:
         run: python3 protocol_check/run.py --image minivectordb:preflight --handshake-only --output protocol-results/handshake
       - name: Official public SQL
         run: python3 protocol_check/run.py --image minivectordb:preflight --output protocol-results/public
+      - name: Local cases with hand written expectations
+        run: python3 protocol_check/run.py --image minivectordb:preflight --package tests/local_cases --output protocol-results/local
       - name: Unit tests of the submitted implementation
         run: docker run --rm -v "$PWD:/repo:ro" -w /repo --entrypoint python minivectordb:preflight -m unittest discover -s tests -t . -v
       - name: Large batch and recovery under official limits

@@ -1,0 +1,3 @@
+CREATE TABLE docs (id BIGINT PRIMARY KEY, content VARCHAR(16));
+INSERT INTO docs VALUES (1, 'yi'),(2, 'jia'),(3, 'a');
+SELECT id FROM docs ORDER BY content;

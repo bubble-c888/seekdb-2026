@@ -1,0 +1,9 @@
+[
+  {},
+  {
+    "affected_rows": 1
+  },
+  {
+    "error": "unsupported_sql"
+  }
+]

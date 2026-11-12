@@ -1,0 +1,20 @@
+[
+  {},
+  {
+    "affected_rows": 1
+  },
+  {
+    "columns": [
+      "id",
+      "category",
+      "content"
+    ],
+    "rows": [
+      [
+        1,
+        "a",
+        "x"
+      ]
+    ]
+  }
+]

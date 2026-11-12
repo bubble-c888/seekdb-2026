@@ -1,0 +1,19 @@
+[
+  {},
+  {
+    "affected_rows": 1
+  },
+  {
+    "columns": [
+      "embedding"
+    ],
+    "rows": [
+      [
+        [
+          1.5,
+          -2.0
+        ]
+      ]
+    ]
+  }
+]

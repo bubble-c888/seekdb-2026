@@ -465,6 +465,14 @@
       "command": "读 minivectordb/engine/database.py 的 _commit 与 checkpoint",
       "result_evidence": "修复前：_commit 写完日志、落完补丁之后没有更新检查点，目录里的日志位置一直停在启动时的位置，崩溃之后整个日志都要重放一遍。修复后：每次提交之后写一次检查点（日志位置随提交前进），恢复只需要重放最后一次提交之后的部分。代价是每次提交多写一次目录文件：容器内 10,000 行的写入从 7.27 s 变成 7.51 s（+3%），查询耗时不变（4.32 ms/次）。",
       "conclusion": "恢复时间计入启动时间（上限 120 秒），所以检查点必须跟着提交前进；这是用 3% 的写入时间换大表上的恢复时间。"
+    },
+    {
+      "id": "e29",
+      "question": "公开用例只是样本，还有哪些语义差异是它们看不出来的？",
+      "method": "写了一个朴素参考实现：行是一个元组列表，每条查询都用 Python 循环求值（过滤、AND、并列排序、带偏移的分页、距离）；随机地增删改，随机地提问，把两边的答案逐行比较。查询还会在事务里执行，检查事务内可见性与回滚后的状态。",
+      "command": "python -m unittest tests.test_random_queries -v",
+      "result_evidence": "800 轮随机改动与查询（含事务）全部一致：过滤、AND、字符串比较（码点序）、并列按主键升序、LIMIT 与 LIMIT offset,count 的分页、距离的数值、向量的投影、事务内可见性与回滚后的状态，都与朴素实现逐行相同。\n顺带确认了一件对隐藏用例很关键的事：公开用例里所有返回多行的语句都带 ORDER BY，没有一条依赖无序查询的行序——所以题面“未指定 ORDER BY 的结果按集合比较”是成立的。",
+      "conclusion": "隐藏用例与公开用例的差别不在语句写法上，而在数据规模和语义组合上；随机差分测试能在没有隐藏用例的情况下把语义组合穷举一遍。"
     }
   ],
   "design_decisions": [
@@ -568,6 +576,16 @@
           "student_evidence_note": "首次提测未通过；平台后来给出的具体原因是 JSON response timeout。"
         }
       ]
+    },
+    {
+      "id": "d11",
+      "topic": "用朴素参考实现做随机差分，而不是只跑公开用例",
+      "student_evidence": "https://oceanbase.yuque.com/org-wiki-obtech-vh7w9r/hc3pio/lg8enxlmwg69unt6 完成这个链接的任务，必须都符合要求。拿不准的事情问我，你做不了的指导我做，最后交付给我Commit id和Branch",
+      "student_evidence_pointer": "/user_prompts/0/content",
+      "student_evidence_note": "正式用例共 29 个、公开 20 个，隐藏的那部分不给输入也不给预期，只能自己想办法把语义验全。",
+      "result_evidence": "800 轮随机改动与查询（含事务）全部一致：过滤、AND、字符串比较（码点序）、并列按主键升序、LIMIT 与 LIMIT offset,count 的分页、距离的数值、向量的投影、事务内可见性与回滚后的状态，都与朴素实现逐行相同。\n顺带确认了一件对隐藏用例很关键的事：公开用例里所有返回多行的语句都带 ORDER BY，没有一条依赖无序查询的行序——所以题面“未指定 ORDER BY 的结果按集合比较”是成立的。",
+      "result_evidence_pointer": "/experiments/28/result_evidence",
+      "agent_explanation": "这一轮找到的事务可见性缺陷，公开用例 20/20 全绿也发现不了；随机差分测试的价值不在于比公开用例更全，而在于它把“数据 × 语句 × 组合”随机地铺开，包括公开用例从来不碰的组合（带偏移的分页、事务中间查询、向量投影的数值）。"
     },
     {
       "id": "d10",

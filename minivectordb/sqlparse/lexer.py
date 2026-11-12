@@ -177,6 +177,18 @@ class Lexer:
     def _string(self, quote: str = "'") -> Token:
         start = self.i
         self.i += 1  # opening quote
+        # The common case is a literal without an escape.  Finding the closing
+        # quote with the string functions of the interpreter instead of a loop
+        # over the characters matters for the bulk inserts: one row of a
+        # vector column holds 128 numbers, and a batch holds 100 rows.
+        # A doubled quote is an escaped quote inside the literal, so the
+        # literal only ends at a quote that is not doubled.
+        end = self.sql.find(quote, self.i)
+        if end != -1 and not self.sql.startswith(quote * 2, end):
+            segment = self.sql[self.i : end]
+            if "\\" not in segment:
+                self.i = end + 1
+                return Token("string", segment, self.sql[start : self.i], start)
         out: List[str] = []
         while True:
             if self.i >= self.n:

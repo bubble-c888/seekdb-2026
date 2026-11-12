@@ -365,6 +365,14 @@ class LexerFeatureTest(unittest.TestCase):
         stmt = parse("INSERT INTO docs (note) VALUES ('it''s');")
         self.assertEqual(stmt.rows[0][0], ast.StrLiteral("it's"))
 
+    def test_a_doubled_quote_in_the_middle(self):
+        stmt = parse("INSERT INTO docs (note) VALUES ('ab''cd');")
+        self.assertEqual(stmt.rows[0][0], ast.StrLiteral("ab'cd"))
+
+    def test_a_literal_without_an_escape(self):
+        stmt = parse("INSERT INTO docs (note) VALUES ('plain text');")
+        self.assertEqual(stmt.rows[0][0], ast.StrLiteral("plain text"))
+
     def test_backslash_escapes(self):
         stmt = parse(r"INSERT INTO docs (note) VALUES ('a\'b\\c\nd\te\rf\0g');")
         self.assertEqual(

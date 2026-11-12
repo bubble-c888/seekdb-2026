@@ -61,6 +61,10 @@ class FileStore:
         self._sizes[key] = size
         return size
 
+    def set_size(self, key: str, size: int) -> None:
+        """Remember the size of a file that was changed outside of a write."""
+        self._sizes[key] = size
+
     def read(self, key: str, offset: int = 0, length: Optional[int] = None) -> bytes:
         path = self.path(key)
         try:
@@ -290,6 +294,29 @@ class WriteAheadLog:
         os.fsync(self._handle.fileno())
         self.offset += len(payload)
         return self.offset
+
+    def trim(self, size: int) -> None:
+        """Drop the records that the catalog already covers.
+
+        The data files are written and flushed to stable storage before the
+        checkpoint is written, so the records before the checkpoint are not
+        needed by a recovery any more.  Without the trim the log of a large
+        table would grow to the size of the whole table.
+        """
+        if self._handle is None:
+            return
+        path = self.store.path(self.key)
+        if not path.exists():
+            return
+        current = self.store.size(self.key)
+        if current <= size:
+            self.offset = min(self.offset, current)
+            return
+        self._handle.flush()
+        os.ftruncate(self._handle.fileno(), size)
+        self._handle.seek(size)
+        self.offset = size
+        self.store.set_size(self.key, size)
 
     # -- reading --------------------------------------------------------
     def iter_records(self, start: int = 0) -> Iterator[Tuple[int, Dict[str, Any]]]:

@@ -295,8 +295,12 @@ class Database:
         # 7. the catalog remembers how far the log was applied.  Without this
         #    a recovery after a crash would have to replay the whole log, and
         #    the log of a large table does not fit into the time a start may
-        #    take.
+        #    take.  The data files are durable at this point, so the records
+        #    before the checkpoint are not needed any more and the log is
+        #    trimmed: without the trim the log of a large table would grow to
+        #    the size of the whole table.
         self.checkpoint()
+        self.wal.trim(self.wal.offset)
 
     # ------------------------------------------------------------------
     # helpers used by the executor

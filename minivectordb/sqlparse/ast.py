@@ -145,6 +145,9 @@ class Select:
     where: Optional[Expr] = None
     order_by: List[OrderItem] = field(default_factory=list)
     limit: Optional[int] = None
+    #: The number of rows that are skipped, ``LIMIT offset, count`` and
+    #: ``LIMIT count OFFSET offset`` both set it.
+    offset: int = 0
 
 
 @dataclass(frozen=True)

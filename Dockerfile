@@ -27,6 +27,7 @@ WORKDIR /app
 # The database is a pure Python package, so the sources are copied as they are.
 COPY minivectordb/ /app/minivectordb/
 COPY tools/ /app/tools/
+COPY protocol_check/ /app/protocol_check/
 COPY mysqltest/ /app/mysqltest/
 COPY README.md /app/README.md
 

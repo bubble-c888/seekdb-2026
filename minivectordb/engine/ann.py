@@ -66,7 +66,12 @@ class VectorIndex:
 
     # -- building -------------------------------------------------------
     def build(self, writes: WriteSet, sample_limit: int = 50000) -> None:
-        """(Re)build the coarse quantizer and the inverted lists."""
+        """(Re)build the coarse quantizer and the inverted lists.
+
+        The work runs block by block: a table that holds more vectors than the
+        memory budget allows can be indexed, because neither the whole column
+        nor the distances of the whole table are in the memory at once.
+        """
         table = self.table
         column = table.column(self.column)
         alive = table.read_alive(0, table.n_slots)
@@ -75,35 +80,49 @@ class VectorIndex:
             self.clusters = 0
             self.lists = {}
             return
-        vectors = self._gather_vectors(column, live_slots)
-        sample = vectors
-        if vectors.shape[0] > sample_limit:
-            step = max(1, vectors.shape[0] // sample_limit)
-            sample = vectors[::step]
+        # Only the sample of the quantizer is read into the memory.
+        if live_slots.size > sample_limit:
+            step = max(1, live_slots.size // sample_limit)
+            sample_slots = live_slots[::step][:sample_limit]
+        else:
+            sample_slots = live_slots
+        sample = self._gather_vectors(column, sample_slots)
         clusters = max(1, min(self.clusters or 64, sample.shape[0]))
         centroids = kmeans(sample.astype(np.float32), clusters)
         self.centroids = centroids
         self.clusters = int(centroids.shape[0])
         self.nprobe = max(1, min(self.nprobe, self.clusters))
         writes.add(self.centroid_key, 0, centroids.astype(np.float32).tobytes())
-        assignment = np.argmin(
-            np.stack(
+        members: Dict[int, List[int]] = {
+            cluster: [] for cluster in range(self.clusters)
+        }
+        radii = [0.0] * self.clusters
+        block = 8192
+        for start in range(0, live_slots.size, block):
+            slots = live_slots[start : start + block]
+            vectors = self._gather_vectors(column, slots)
+            distances = np.stack(
                 [l2_distances(vectors, centroid) for centroid in centroids], axis=1
-            ),
-            axis=1,
-        )
+            )
+            assignment = np.argmin(distances, axis=1)
+            for position, cluster in enumerate(assignment.tolist()):
+                members[cluster].append(int(slots[position]))
+            for cluster in range(self.clusters):
+                selected = assignment == cluster
+                if not np.any(selected):
+                    continue
+                radius = float(np.max(distances[selected, cluster]))
+                if radius > radii[cluster]:
+                    radii[cluster] = radius
         self.lists = {}
         self.radii = {}
         for cluster in range(self.clusters):
-            members = live_slots[assignment == cluster]
-            if members.size:
-                payload = members.astype(np.int32).tobytes()
+            rows = members[cluster]
+            if rows:
+                payload = np.asarray(rows, dtype=np.int32).tobytes()
                 writes.add(self.list_key(cluster), 0, payload)
-                self.lists[str(cluster)] = int(members.size)
-                radius = float(
-                    np.max(l2_distances(vectors[assignment == cluster], centroids[cluster]))
-                )
-                self.radii[str(cluster)] = radius
+                self.lists[str(cluster)] = len(rows)
+                self.radii[str(cluster)] = radii[cluster]
             else:
                 self.lists[str(cluster)] = 0
                 self.radii[str(cluster)] = 0.0

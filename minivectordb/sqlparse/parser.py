@@ -577,20 +577,43 @@ class Parser:
                     self.advance()
                     continue
                 break
+        limit: Optional[int] = None
+        offset = 0
         if self.at_word("LIMIT"):
             self.advance()
-            tok = self.peek()
-            if tok.kind != "int":
-                if tok.kind == "eof":
-                    self._missing("a LIMIT value")
-                self._err("LIMIT expects a non-negative integer", tok)
-            if tok.value < 0:
-                self._err("LIMIT expects a non-negative integer", tok)
-            limit = tok.value
-            self.advance()
+            first = self._parse_limit_number()
+            if self.at_op(","):
+                # ``LIMIT offset, count``
+                self.advance()
+                offset = first
+                limit = self._parse_limit_number()
+            elif self.at_word("OFFSET"):
+                # ``LIMIT count OFFSET offset``
+                self.advance()
+                limit = first
+                offset = self._parse_limit_number()
+            else:
+                limit = first
         return ast.Select(
-            table=table, items=items, where=where, order_by=order_by, limit=limit
+            table=table,
+            items=items,
+            where=where,
+            order_by=order_by,
+            limit=limit,
+            offset=offset,
         )
+
+    def _parse_limit_number(self) -> int:
+        """A non-negative number of rows."""
+        tok = self.peek()
+        if tok.kind != "int":
+            if tok.kind == "eof":
+                self._missing("a LIMIT value")
+            self._err("LIMIT expects a non-negative integer", tok)
+        if tok.value < 0:
+            self._err("LIMIT expects a non-negative integer", tok)
+        self.advance()
+        return int(tok.value)
 
     def _parse_select_item(self) -> ast.SelectItem:
         tok = self.peek()

@@ -178,7 +178,9 @@ CREATE VECTOR INDEX <name> ON <table>(<vector column>);
 * 类型：`BIGINT`、`VARCHAR(n)`、`VECTOR(n)`；每表一个 BIGINT 主键，最多一个向量列；
 * 比较运算符：`=`、`<`、`<=`、`>`、`>=`，条件之间用 `AND` 连接；
 * 投影：普通列、`SELECT *`、`L2_DISTANCE(<vector column>, '<vector literal>') [AS alias]`；
-* 排序：`ORDER BY <列名或别名>`，并列时按主键升序；`DESC` 只影响主排序键。
+* 排序：`ORDER BY <列名或别名>`，并列时按主键升序；`DESC` 只影响主排序键；
+* 分页：`LIMIT <n>`、`LIMIT <offset>, <n>` 与 `LIMIT <n> OFFSET <offset>`；
+* 标识符不区分大小写（表名、列名都可以任意大小写书写）。
 
 ### 3.2 明确的语义约定
 
@@ -264,6 +266,10 @@ CREATE VECTOR INDEX <name> ON <table>(<vector column>);
 未显式 `BEGIN` 时，每条修改语句按自动提交处理，语义与显式事务一致。
 `UPDATE` 只重写被赋值的列（VARCHAR 列写的是 4 字节字典码），
 因此大字段不会被整行复制。
+
+事务内的查询能看到**本事务自己的修改**：插入的行立刻可查，删除的行立刻消失，
+改过的列按新值参与过滤和排序，改过的向量按新向量算距离——
+普通查询与向量检索的结果始终一致，`ROLLBACK` 之后一起恢复。
 
 ### 4.3 崩溃恢复
 
@@ -415,6 +421,12 @@ python -m unittest tests.test_engine -v
 python -m unittest tests.test_edge_cases -v
 # 不支持的语句（NULL / JOIN / 聚合 / 子查询 / ALTER / 外键 / 嵌套事务 / 主键更新）
 python -m unittest tests.test_unsupported -v
+# VARCHAR 字典（磁盘驻留、取值读回、码点序）
+python -m unittest tests.test_dictionary -v
+# 题面子集里公开用例没用到、但正式用例可能用的写法（分页、投影、条件）
+python -m unittest tests.test_sql_forms -v
+# 事务内看得到自己的修改（普通查询与向量检索）
+python -m unittest tests.test_transaction_visibility -v
 # 解析器测试
 python -m unittest tests.test_parser -v
 # 本地驱动自身的冒烟测试

@@ -386,15 +386,20 @@ class Executor:
             if isinstance(item[1], OutputItem) and item[1].kind == "distance":
                 distance_item = item[1]
         limit = statement.limit
+        offset = int(statement.offset or 0)
 
         txn = self.db.txn
         overlay = txn.overlay_for(table) if txn is not None else None
 
         if distance_item is not None and self.db.mode == "ann":
-            rows, labels = self._select_ann(table, items, terms, order, limit, distance_item, overlay)
+            rows, labels = self._select_ann(
+                table, items, terms, order, limit, offset, distance_item, overlay
+            )
             return {"columns": labels, "rows": rows}
 
-        rows, labels = self._select_exact(table, items, terms, order, limit, overlay)
+        rows, labels = self._select_exact(
+            table, items, terms, order, limit, offset, overlay
+        )
         return {"columns": labels, "rows": rows}
 
     def _resolve_output(
@@ -565,6 +570,7 @@ class Executor:
         terms: List[ComparisonTerm],
         start: int,
         count: int,
+        overlay: Optional[TableOverlay] = None,
     ) -> np.ndarray:
         mask = table.read_alive(start, count)
         for term in terms:
@@ -600,6 +606,35 @@ class Executor:
                     else:
                         part = ranks >= term.target_rank
                 mask = mask & part & (codes >= 0)
+        return self._apply_overlay(table, terms, mask, start, count, overlay)
+
+    def _apply_overlay(
+        self,
+        table: Table,
+        terms: List[ComparisonTerm],
+        mask: np.ndarray,
+        start: int,
+        count: int,
+        overlay: Optional[TableOverlay],
+    ) -> np.ndarray:
+        """Apply the changes of the running transaction to a chunk of the scan.
+
+        A transaction has to see its own changes: the rows it deleted are
+        gone and the rows it changed are matched against their *new* values.
+        """
+        if overlay is None:
+            return mask
+        for slot in overlay.deleted:
+            if start <= slot < start + count:
+                mask[slot - start] = False
+        for slot, values in overlay.rows.items():
+            if slot in overlay.deleted:
+                continue
+            if not (start <= slot < start + count):
+                continue
+            mask[slot - start] = self._row_matches(
+                table, terms, values, overlay, slot=slot
+            )
         return mask
 
     def _matching_slots(
@@ -702,6 +737,7 @@ class Executor:
         terms: List[ComparisonTerm],
         order: List[Tuple[ast.OrderItem, Any]],
         limit: Optional[int],
+        offset: int,
         overlay: Optional[TableOverlay],
     ) -> Tuple[List[List[Any]], List[str]]:
         labels = [item.label for item in items]
@@ -714,13 +750,13 @@ class Executor:
                 count = min(CHUNK_ROWS, table.n_slots - start)
                 if count <= 0:
                     continue
-                mask = self._mask_for(table, terms, start, count)
+                mask = self._mask_for(table, terms, start, count, overlay)
                 selected = np.nonzero(mask)[0]
                 if selected.size == 0:
                     continue
                 slots = selected + start
                 rows.extend(self._row_values_for(table, items, start, count, slots, overlay))
-                if limit is not None and len(rows) >= limit:
+                if limit is not None and len(rows) >= offset + limit:
                     break
             if overlay is not None:
                 for slot in sorted(overlay.inserted):
@@ -730,6 +766,8 @@ class Executor:
                     if not self._row_matches(table, terms, values, overlay, slot=None):
                         continue
                     rows.append(self._row_from_overlay(table, items, values))
+            if offset:
+                rows = rows[offset:]
             if limit is not None:
                 rows = rows[:limit]
             return rows, labels
@@ -737,13 +775,13 @@ class Executor:
         # With an ORDER BY only the rows that survive the LIMIT are built, the
         # sort keys are computed chunk by chunk.
         specs = self._order_specs(order, items)
-        wanted = limit if limit is not None else None
+        wanted = (offset + limit) if limit is not None else None
         best = _TopK(wanted)
         for start in range(0, table.n_slots, CHUNK_ROWS):
             count = min(CHUNK_ROWS, table.n_slots - start)
             if count <= 0:
                 continue
-            mask = self._mask_for(table, terms, start, count)
+            mask = self._mask_for(table, terms, start, count, overlay)
             selected = np.nonzero(mask)[0]
             if selected.size == 0:
                 continue
@@ -764,11 +802,68 @@ class Executor:
                         int(slots[index]),
                     )
                 )
+        if overlay is not None:
+            # The rows that the transaction inserted are not in the files yet.
+            for slot in sorted(overlay.inserted):
+                if slot in overlay.deleted:
+                    continue
+                values = overlay.rows.get(slot, {})
+                if not self._row_matches(table, terms, values, overlay, slot=None):
+                    continue
+                key = self._overlay_sort_key(table, specs, slot, values, overlay)
+                best.add((key, int(slot)))
         ordered = best.result()
+        if offset:
+            ordered = ordered[offset:]
         if limit is not None:
             ordered = ordered[:limit]
         rows = self._build_payloads(table, items, [slot for _key, slot in ordered], overlay)
         return rows, labels
+
+    def _overlay_sort_key(
+        self,
+        table: Table,
+        specs: List[Tuple[str, ast.OrderItem, Any]],
+        slot: int,
+        values: Dict[str, Any],
+        overlay: Optional[TableOverlay],
+    ) -> Tuple[Any, ...]:
+        """The sort key of a row that the transaction inserted.
+
+        Such a row is not in the files yet, so every value comes from the
+        transaction itself.
+        """
+        key: List[Any] = []
+        for kind, order_item, reference in specs:
+            if kind == "column":
+                column = reference
+                raw = values.get(column.key)
+                if raw is None:
+                    raw = table.value_at(slot, column)
+                if column.type == "VARCHAR":
+                    dictionary = table.dictionary(column)
+                    text = str(raw)
+                    code = dictionary.code_of(text)
+                    if code is None and overlay is not None:
+                        code = overlay.pending_strings.get(column.key, {}).get(text)
+                    ranks = dictionary.rank_table(
+                        self._pending_strings(table, column)
+                    )[0]
+                    value = float(ranks[code]) if code is not None else 0.0
+                else:
+                    value = float(raw)
+            else:
+                vector = np.asarray(values.get(reference.column.key), dtype=np.float32)
+                value = float(
+                    l2_distances(np.asarray([vector]), reference.vector)[0]
+                )
+            key.append(-value if order_item.desc else value)
+        if table.primary_key:
+            raw = values.get(table.primary_key.lower())
+            if raw is None:
+                raw = table.primary_key_at(slot)
+            key.append(int(raw))
+        return tuple(key)
 
     def _build_payloads(
         self,
@@ -780,8 +875,14 @@ class Executor:
         """Build the result rows for a small set of slots."""
         if not slots:
             return []
+        # The rows that the transaction inserted are not in the files yet.
+        inserted = set()
+        if overlay is not None:
+            inserted = {slot for slot in slots if slot in overlay.inserted}
         groups: Dict[int, List[int]] = {}
         for slot in slots:
+            if slot in inserted:
+                continue
             groups.setdefault(slot // CHUNK_ROWS, []).append(slot)
         payloads: Dict[int, List[Any]] = {}
         for group, group_slots in groups.items():
@@ -791,6 +892,11 @@ class Executor:
             values = self._row_values_for(table, items, start, count, selected, overlay)
             for slot, row in zip(sorted(group_slots), values):
                 payloads[slot] = row
+        for slot in slots:
+            if slot in inserted:
+                payloads[slot] = self._row_from_overlay(
+                    table, items, (overlay.rows.get(slot, {}) if overlay else {})
+                )
         return [payloads[slot] for slot in slots]
 
     def _order_specs(
@@ -848,6 +954,17 @@ class Executor:
                     values = l2_distances(vectors, reference.vector)
                 else:
                     values = l2_distances(vectors[slots - start], reference.vector)
+                if overlay is not None and overlay.rows:
+                    # A row whose vector the transaction changed is measured
+                    # with its new vector.
+                    key = reference.column.key
+                    for index, slot in enumerate(slot_list):
+                        override = overlay.rows.get(slot)
+                        if override and key in override:
+                            vector = np.asarray(override[key], dtype=np.float32)
+                            values[index] = float(
+                                l2_distances(np.asarray([vector]), reference.vector)[0]
+                            )
                 values = -values if order_item.desc else values
             arrays.append(values)
         return arrays
@@ -927,7 +1044,19 @@ class Executor:
                 vectors = table.read_vectors(item.column, start, count)
                 selected = vectors[slots - start]
                 distances = l2_distances(selected, item.vector)
-                payload[position] = [float(value) for value in distances.tolist()]
+                values = [float(value) for value in distances.tolist()]
+                if overlay is not None and overlay.rows:
+                    # A row whose vector the transaction changed is measured
+                    # with its new vector.
+                    key = item.column.key
+                    for index, slot in enumerate(slots.tolist()):
+                        overrides = overlay.rows.get(slot)
+                        if overrides and key in overrides:
+                            vector = np.asarray(overrides[key], dtype=np.float32)
+                            values[index] = float(
+                                l2_distances(np.asarray([vector]), item.vector)[0]
+                            )
+                payload[position] = values
         # apply the overlay of the running transaction
         if overlay is not None:
             for index, slot in enumerate(slots.tolist()):
@@ -965,18 +1094,12 @@ class Executor:
                     row.append(0.0)
                 else:
                     stored = np.asarray(vector, dtype=np.float32)
+                    # The same computation as the rows of the files.
                     row.append(
                         float(
-                            np.sqrt(
-                                float(
-                                    np.einsum(
-                                        "i,i->i",
-                                        stored - item.vector,
-                                        stored - item.vector,
-                                        dtype=np.float64,
-                                    )[0]
-                                )
-                            )
+                            l2_distances(
+                                np.asarray([stored], dtype=np.float32), item.vector
+                            )[0]
                         )
                     )
         return row
@@ -989,6 +1112,7 @@ class Executor:
         terms: List[ComparisonTerm],
         order: List[Tuple[ast.OrderItem, Any]],
         limit: Optional[int],
+        offset: int,
         distance_item: OutputItem,
         overlay: Optional[TableOverlay],
     ) -> Tuple[List[List[Any]], List[str]]:
@@ -996,14 +1120,18 @@ class Executor:
         if table.n_slots <= ANN_EXACT_LIMIT:
             # Small data sets are scanned exactly, so that the approximate mode
             # returns the same rows as the reference implementation.
-            return self._select_exact(table, items, terms, order, limit, overlay)
+            return self._select_exact(
+                table, items, terms, order, limit, offset, overlay
+            )
         index = self._index_for(table, distance_item.column)
         if index is None:
-            return self._select_exact(table, items, terms, order, limit, overlay)
+            return self._select_exact(
+                table, items, terms, order, limit, offset, overlay
+            )
         assert distance_item.column is not None
         column = distance_item.column
         descending = any(item.desc for item, _ in order) if order else False
-        wanted = limit
+        wanted = (offset + limit) if limit is not None else None
         sign = -1.0 if descending else 1.0
         best: List[Tuple[float, int, int]] = []
         seen = set()
@@ -1034,6 +1162,9 @@ class Executor:
                     continue
                 if not bool(alive[slot]):
                     continue
+                if overlay is not None and slot in overlay.deleted:
+                    # The row was deleted by the running transaction.
+                    continue
                 if terms and not self._slot_matches(table, terms, slot, overlay):
                     continue
                 slots.append(slot)
@@ -1046,13 +1177,49 @@ class Executor:
             distances = np.sqrt(
                 np.einsum("ij,ij->i", diff, diff, dtype=np.float64)
             )
+            if overlay is not None and overlay.rows:
+                # A row whose vector the transaction changed is measured with
+                # its new vector.
+                key = column.key
+                for position, slot in enumerate(slots):
+                    overrides = overlay.rows.get(slot)
+                    if overrides and key in overrides:
+                        vector = np.asarray(overrides[key], dtype=np.float32)
+                        distances[position] = float(
+                            l2_distances(np.asarray([vector]), distance_item.vector)[0]
+                        )
             for slot, distance in zip(slots, distances.tolist()):
                 primary_key = table.primary_key_at(slot)
                 best.append((sign * float(distance), primary_key, slot))
             best.sort(key=lambda entry: (entry[0], entry[1]))
             if wanted is not None and len(best) > wanted:
                 best = best[:wanted]
+        if overlay is not None:
+            # The rows that the transaction inserted are not in the index yet.
+            for slot in sorted(overlay.inserted):
+                if slot in overlay.deleted:
+                    continue
+                values = overlay.rows.get(slot, {})
+                if terms and not self._row_matches(
+                    table, terms, values, overlay, slot=None
+                ):
+                    continue
+                vector = values.get(column.key)
+                if vector is None:
+                    continue
+                distance = float(
+                    l2_distances(
+                        np.asarray([np.asarray(vector, dtype=np.float32)]),
+                        distance_item.vector,
+                    )[0]
+                )
+                primary_key = 0
+                if table.primary_key:
+                    primary_key = int(values.get(table.primary_key.lower(), 0))
+                best.append((sign * distance, primary_key, slot))
         best.sort(key=lambda entry: (entry[0], entry[1]))
+        if offset:
+            best = best[offset:]
         if limit is not None:
             best = best[:limit]
         rows: List[List[Any]] = []

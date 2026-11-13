@@ -809,7 +809,6 @@
     "/user_prompts/6/content",
     "/experiments/7/output",
     "/user_prompts/4/content",
-    "/platform_results/3/output",
     "/dialogue/22/student",
     "/experiments/33/output",
     "/dialogue/24/student",
@@ -829,7 +828,6 @@
     "/dialogue/15/student",
     "/experiments/29/output",
     "/dialogue/9/student",
-    "/retrospective/8/content",
     "/dialogue/18/student",
     "/experiments/37/output",
     "/dialogue/19/student",
@@ -886,14 +884,14 @@
     "dimension":"取舍与反思",
     "tier":0.5,
     "student_evidence_pointer":"/dialogue/9/student",
-    "result_evidence_pointer":"/retrospective/8/content"
+    "result_evidence_pointer":""
    },
    {
     "id":"u8",
     "dimension":"技术理解与迁移",
     "tier":0.5,
     "student_evidence_pointer":"/user_prompts/4/content",
-    "result_evidence_pointer":"/platform_results/3/output"
+    "result_evidence_pointer":""
    },
    {
     "id":"u9",
@@ -1301,8 +1299,8 @@
     "snippet":"不用U盘了，全存E盘"
    },
    "result_evidence":{
-    "pointer":"/retrospective/8/content",
-    "snippet":"在 G 盘（exFAT）上做 Docker 绑定挂载时踩了两次坑。"
+    "pointer":"",
+    "snippet":""
    },
    "chain":"学生定下盘位规则（/dialogue/7/student、/dialogue/8/student）→ 实测发现 G 盘是 exFAT，绑定挂载下 10,000 行写入在容器里卡住、CPU 占用为 0（/retrospective/9/content）→ 学生改判为全部存 E 盘（/dialogue/9/student）。本条只计 0.5：学生给出的是结论与改判，条件与代价的判断来自实测记录。"
   },
@@ -1317,8 +1315,8 @@
     "snippet":"你参与决策与验证（推荐）"
    },
    "result_evidence":{
-    "pointer":"/platform_results/3/output",
-    "snippet":"原始分 = 2.000000"
+    "pointer":"",
+    "snippet":""
    },
    "chain":"学生选择参与决策与验证的工作方式 → 材料里保留的全部实验输出都是真实执行的（/experiments）→ 第二轮评测的 Agent Prompt 原始分是 2.0（/platform_results/3/output）。本条只计 0.5：这一条记录的是工作方式的选择，本身不是一次带结果的技术验证。"
   },

@@ -907,13 +907,17 @@
     "/user_prompts/6/content",
     "/experiments/7/output",
     "/user_prompts/4/content",
-    "/platform_results/4/output"
+    "/platform_results/4/output",
+    "/dialogue/22/student",
+    "/experiments/33/output"
    ],
    "实验与反馈迭代": [
     "/dialogue/12/student",
     "/platform_results/2/output",
     "/dialogue/21/student",
-    "/experiments/35/output"
+    "/experiments/35/output",
+    "/dialogue/23/student",
+    "/experiments/39/output"
    ],
    "取舍与反思": [
     "/dialogue/15/student",
@@ -1012,6 +1016,20 @@
     "tier": 1.0,
     "student_evidence_pointer": "/dialogue/20/student",
     "result_evidence_pointer": "/experiments/34/output"
+   },
+   {
+    "id": "u13",
+    "dimension": "技术理解与迁移",
+    "tier": 1.5,
+    "student_evidence_pointer": "/dialogue/22/student",
+    "result_evidence_pointer": "/experiments/33/output"
+   },
+   {
+    "id": "u14",
+    "dimension": "实验与反馈迭代",
+    "tier": 1.5,
+    "student_evidence_pointer": "/dialogue/23/student",
+    "result_evidence_pointer": "/experiments/39/output"
    }
   ]
  },
@@ -1022,7 +1040,7 @@
    "kind": "message",
    "student_message_id": "msg-user-v1-FQ-CMialXqlv1GtrrkLFbk0ByXr74SP6STxYPrqGVCQ",
    "student": "https://oceanbase.yuque.com/org-wiki-obtech-vh7w9r/hc3pio/lg8enxlmwg69unt6 完成这个链接的任务，必须都符合要求。拿不准的事情问我，你做不了的指导我做，最后交付给我Commit id和Branch",
-   "agent_reply": "我先看看这个语雀链接的内容，同时确认一下当前工作区状态。\n…\n页面是 SPA 渲染的，我用 Yuque API 取正文，同时确认一下工作区和本机工具。\n…\n需要先拿到语雀文档正文。我先加载 mcode-tools 技能看看有没有语雀连接器。\n…\n没有语雀连接器，改用内置浏览器读取渲染后的正文。\n…\n文档主体已拿到，但 3.3 之后的小节还没渲染出来。我往下滚动继续读取。\n…\n已拿到完整赛题要求。现在去读同组的\"准备 PowerContext 仓库\"文档，同时盘点本机可用的编译 …（本轮回复较长，此处保留开头）"
+   "agent_reply": "我先看看这个语雀链接的内容，同时确认一下当前工作区状态。\n…\n页面是 SPA 渲染的，我用 Yuque API 取正文，同时确认一下工作区和本机工具。\n…\n需要先拿到语雀文档正文。我先加载 mcode-tools 技能看看有没有语雀连接器。\n…\n没有语雀连接器，改用内置浏览器读取 …（本轮回复较长，此处保留开头）"
   },
   {
    "id": "d02",
@@ -1030,7 +1048,7 @@
    "kind": "message",
    "student_message_id": "msg-user-v1-nzDP0_ied7AI6ZBTPHm-6ILu2JJVjCtSMJjpwpbE008",
    "student": "好像没有发布提包",
-   "agent_reply": "Let me check the unread background tasks and verify the remote state on GitHub.\n…\nThose are stale tasks from earlier, already accounted for. Let me verify what's actually published on GitHub right now.\n…\nThe repo is private (unauthenticated …（本轮回复较长，此处保留开头）"
+   "agent_reply": "Let me check the unread background tasks and verify the remote state on GitHub.\n…\nThose are stale tasks from earlier, already accounted for. …（本轮回复较长，此处保留开头）"
   },
   {
    "id": "d03",
@@ -1038,7 +1056,7 @@
    "kind": "message",
    "student_message_id": "msg-user-v1-3T2bXS-kEuhL3tnbNUGr16bNCZmm_MD8ezSIxmtE9YA",
    "student": "点开是这个页面，不知道怎么操作‘",
-   "agent_reply": "让我看一下当前浏览器的登录状态和这个仓库的归属，才能判断为什么没有权限。\n…\nThe screenshot is from your own Chrome — the in-app Browser doesn't carry your GitHub session. Let me diagnose the permission issue from the git side.\n…\nNow the root cause is clear. Let me confirm the …（本轮回复较长，此处保留开头）"
+   "agent_reply": "让我看一下当前浏览器的登录状态和这个仓库的归属，才能判断为什么没有权限。\n…\nThe screenshot is from your own Chrome — the in-app Browser doesn't carry your GitHub session. Let me …（本轮回复较长，此处保留开头）"
   },
   {
    "id": "d04",
@@ -1046,7 +1064,7 @@
    "kind": "message",
    "student_message_id": "msg-user-v1-GIm0l7a__IV2kSq9DBRsTjSvr09o6Lrs7sDORYM0Gh8",
    "student": "目前已经在这个页面把他改为私有的了",
-   "agent_reply": "让我直接匿名验证一下当前状态——页面那句 \"This repository is currently public\" 其实说的是**已经公开了**。\n…\n**成功了——仓库现在是 public，判题机已经能拿到了。** 我用匿名方式（不带任何凭据，正是判题机的视角）验证：\n…\n全部通过。仓库现在是 **public**，我用**完全不带凭据**的方式（正是判题机的视角）独立验证了三条链路：\n\n| 验证项 | 结果 |\n| --- | --- |\n| GitHub API 仓库 …（本轮回复较长，此处保留开头）"
+   "agent_reply": "让我直接匿名验证一下当前状态——页面那句 \"This repository is currently public\" 其实说的是**已经公开了**。\n…\n**成功了——仓库现在是 public，判题机已经能拿到了。** 我用匿名方式（不带任何凭据，正是判题机的视角）验证：\n…\n全 …（本轮回复较长，此处保留开头）"
   },
   {
    "id": "d05",
@@ -1062,7 +1080,7 @@
    "kind": "message",
    "student_message_id": "msg-user-v1--CE8tlFwGZ8B33KYZwCGR0CW0y4NOc1hC2RJxII1RE0",
    "student": "MYSQL这个过不了后面都白搭。你先把这个过了，查一查哪里的问题",
-   "agent_reply": "先把上游题包再拉一遍——**如果官方驱动已经随题包发出来了**，那就直接照它对齐，比猜快得多。\n…\n**上游题包已经更新了！** 从 5 个用例扩到 20 个，而且分支 tip 从 `a3dba55` 变成了 `9f6df2b`。这些新用例直接暴露了协议细节。立刻读：\n…\n题包从 v1 升到 **v4**，新增了 15 个用例，还改写了 README（+87 行，很可能是协议说明）。全部解出来看：\n…\n**关键发现！** 题包里有**驱动指令**（`--restart`、`- …（本轮回复较长，此处保留开头）"
+   "agent_reply": "先把上游题包再拉一遍——**如果官方驱动已经随题包发出来了**，那就直接照它对齐，比猜快得多。\n…\n**上游题包已经更新了！** 从 5 个用例扩到 20 个，而且分支 tip 从 `a3dba55` 变成了 `9f6df2b`。这些新用例直接暴露了协议细节。立刻读：\n…\n题包从 …（本轮回复较长，此处保留开头）"
   },
   {
    "id": "d07",
@@ -1070,7 +1088,7 @@
    "kind": "message",
    "student_message_id": "msg-user-v1-XpQKIcYm-_J6LWd1vf9foCzXZXfXR0HU6kgxbLFzGCM",
    "student": "这个任务执行完成后给电脑锁定",
-   "agent_reply": "任务已完成，先做最后一次状态确认，然后锁定电脑。\n…\n锁定没生效（输入桌面仍是 Default）。我换用直接 API 调用并检查返回值。\n…\n锁定接口调用成功（`LockWorkStation` 返回 True）。本会话进程运行在独立窗口站，无法从这边读到控制台是否已切到 Winlogon 桌面，所以以系统返回值作为依据。\n\n## 交付状态\n\n任务已全部完成并验证：\n\n| 项目 | 结果 |\n| --- | --- |\n| 公开用例 v4（20 例 / 95 条 SQL） | …（本轮回复较长，此处保留开头）"
+   "agent_reply": "任务已完成，先做最后一次状态确认，然后锁定电脑。\n…\n锁定没生效（输入桌面仍是 Default）。我换用直接 API 调用并检查返回值。\n…\n锁定接口调用成功（`LockWorkStation` 返回 True）。本会话进程运行在独立窗口站，无法从这边读到控制台是否已切到 Win …（本轮回复较长，此处保留开头）"
   },
   {
    "id": "d08",
@@ -1078,7 +1096,7 @@
    "kind": "message",
    "student_message_id": "msg-user-v1-5gAcOi1FeVAsjzN0BIwxYOokrH72s6T4NEybdUz8abY",
    "student": "这个是需要下载docker吗，那就下载呗，放到E盘里。然后把处理任务产生的数据全部放到G盘里，可以新建文件夹，原来的数据就可以从电脑删除了",
-   "agent_reply": "先摸清环境：系统版本、WSL/Docker 可用性、磁盘空间、以及要搬走的数据体量。\n…\nWindows 11 家庭版 + WSL2 都在，Docker Desktop 可装。先确认几件事：admin 权限、另外两个目录是什么、以及下载源可达性。\n…\n未提权（Docker Desktop 安装需要管理员），但 WSL2 可用。先把 595MB 安装包下到 E 盘（无需管理员），同时看 WSL 里的 Linux 发行版。\n…\nWSL2 内核在但没装任何发行版。趁下载进行中，我先 …（本轮回复较长，此处保留开头）"
+   "agent_reply": "先摸清环境：系统版本、WSL/Docker 可用性、磁盘空间、以及要搬走的数据体量。\n…\nWindows 11 家庭版 + WSL2 都在，Docker Desktop 可装。先确认几件事：admin 权限、另外两个目录是什么、以及下载源可达性。\n…\n未提权（Docker Des …（本轮回复较长，此处保留开头）"
   },
   {
    "id": "d09",
@@ -1086,7 +1104,7 @@
    "kind": "message",
    "student_message_id": "msg-user-v1-rDm5sOl7TJBTBo1W2tT7FnpCkZEDoHl8kKCZ4kcq5eo",
    "student": "仅这个任务产生的所有数据都放到G盘里。如果是给电脑下载的应用那就存到E盘，如果是运行产生的数据那就放G盘",
-   "agent_reply": "收到，我按这个规则核对一遍盘符归属：应用（含其自身运行目录）在 E:，本任务产生的代码/脚本/日志/报告/测试数据在 G:。先检查 E: 上是否残留任务数据。\n…\nE: 归属清晰：只有 Docker 应用本体（+其 WSL 磁盘）属于「下载的应用」，其余残留我清掉；测试卷也清理。\n…\nE: 已清空任务数据（只剩 Docker 应用本体及其 WSL 磁盘）。回到协议重写：更新入口与数据目录解析。\n…\n现在重写本地驱动 `tools/run_case.py` 为官方 JSONL …（本轮回复较长，此处保留开头）"
+   "agent_reply": "收到，我按这个规则核对一遍盘符归属：应用（含其自身运行目录）在 E:，本任务产生的代码/脚本/日志/报告/测试数据在 G:。先检查 E: 上是否残留任务数据。\n…\nE: 归属清晰：只有 Docker 应用本体（+其 WSL 磁盘）属于「下载的应用」，其余残留我清掉；测试卷也清理。 …（本轮回复较长，此处保留开头）"
   },
   {
    "id": "d10",
@@ -1094,7 +1112,7 @@
    "kind": "message",
    "student_message_id": "msg-user-v1-q_TCZHfMA1fwqDjHtvbP-0ID-qXeruVddRwgEv4alcU",
    "student": "不用U盘了，全存E盘",
-   "agent_reply": "收到——改为全部存 E 盘。先量一下 G 盘上的数据量，再迁移。\n…\n大部分已迁移。剩下的 `protocol`、`runs`、`verify-final` 和 `verify-clone` 继续搬。\n…\nG盘已无任何数据（只剩空目录，运行时的回收站不允许跨工作区删除）。现在把 Docker 的运行数据从 C 盘迁到 E 盘。\n…\nDocker 迁移完成，镜像与卷都还在。现在从 E 盘做最终端到端复验。\n…\n全部通过（官方检查器 20/20、官方自检通过、本地 20/20、1 …（本轮回复较长，此处保留开头）"
+   "agent_reply": "收到——改为全部存 E 盘。先量一下 G 盘上的数据量，再迁移。\n…\n大部分已迁移。剩下的 `protocol`、`runs`、`verify-final` 和 `verify-clone` 继续搬。\n…\nG盘已无任何数据（只剩空目录，运行时的回收站不允许跨工作区删除）。现在把 …（本轮回复较长，此处保留开头）"
   },
   {
    "id": "d11",
@@ -1102,7 +1120,7 @@
    "kind": "message",
    "student_message_id": "msg-user-v1-h8NOEySW8NQuL7cEZ2AUstOBRsW7GytS9lrSCk0H3Fg",
    "student": "任务运行完锁屏",
-   "agent_reply": "已锁屏。\n\n任务全部完成，提交信息再留一份备查：\n\n- 仓库：`https://github.com/bubble-c888/seekdb-2026`\n- 分支：`2026-competition-round2`\n- 40 位 SHA：`b34f6c31abcb1d26bff849c890d7ca10494766e6`\n\n提测后平台若给出失败类别或日志，发给我，我按类别继续查。"
+   "agent_reply": "已锁屏。\n\n任务全部完成，提交信息再留一份备查：\n\n- 仓库：`https://github.com/bubble-c888/seekdb-2026`\n- 分支：`2026-competition-round2`\n- 40 位 SHA：`b34f6c31abcb1d26bff84 …（本轮回复较长，此处保留开头）"
   },
   {
    "id": "d12",
@@ -1110,7 +1128,7 @@
    "kind": "message",
    "student_message_id": "msg-user-v1-RtkyWDzrMGzZUMNkFHECahwu88F9p_oLeM8rakdjIvs",
    "student": "https://oceanbase.yuque.com/org-wiki-obtech-vh7w9r/hc3pio/lg8enxlmwg69unt6 继续完成这个题目",
-   "agent_reply": "我先把赛题原文重新拉下来，逐条对照当前实现，再决定接着补什么。\n…\n页面是 JS 渲染的，直接抓取拿不到正文。我用内置浏览器打开赛题原文。\n…\n内置浏览器里语雀的 React 应用没有渲染出正文。我换用语雀的公开接口取原文。\n…\n拿到题面原文了。我把完整正文落盘，重点核对第 3.2/3.3 节（准入用例与性能口径）。\n…\n性能权重与口径已明确（查询 T 占 40%、写入 20%）。但 §3.1 有一句「不再采用此前示例中的 JSON 请求／响应封装」与已发布的 JSONL 协 …（本轮回复较长，此处保留开头）"
+   "agent_reply": "我先把赛题原文重新拉下来，逐条对照当前实现，再决定接着补什么。\n…\n页面是 JS 渲染的，直接抓取拿不到正文。我用内置浏览器打开赛题原文。\n…\n内置浏览器里语雀的 React 应用没有渲染出正文。我换用语雀的公开接口取原文。\n…\n拿到题面原文了。我把完整正文落盘，重点核对第 3. …（本轮回复较长，此处保留开头）"
   },
   {
    "id": "d13",
@@ -1118,7 +1136,7 @@
    "kind": "message",
    "student_message_id": "msg-user-v1-GNLYBmKqA7Zik0Zqg67t2Dw3tO7HIZlpxzT-uLZbPEw",
    "student": "这题是0分，MySQL正式用例没有通过，这是准入条件。",
-   "agent_reply": "收到。这是准入失败=0分，必须立刻定位。截图里只有「未通过」，平台按规则会给出失败类别和必要日志——那两样信息能直接指出是哪个用例。\n\n我先并行做两件事：请你提供平台细节，同时我自己排查最可能的失败点。\n…\n平台细节等你贴。我先自查最可能的失败点——**近似检索在 >5 万行时才真正走 IVF 索引**，而我此前只在小数据量上验过召回（那时 ann 等价于精确扫描）。这正是隐藏用例「近似检索」类别会考的地方。\n…\n公开用例期望的错误名（`duplicate_key`/`uns …（本轮回复较长，此处保留开头）"
+   "agent_reply": "收到。这是准入失败=0分，必须立刻定位。截图里只有「未通过」，平台按规则会给出失败类别和必要日志——那两样信息能直接指出是哪个用例。\n\n我先并行做两件事：请你提供平台细节，同时我自己排查最可能的失败点。\n…\n平台细节等你贴。我先自查最可能的失败点——**近似检索在 >5 万行时才 …（本轮回复较长，此处保留开头）"
   },
   {
    "id": "d14",
@@ -1126,7 +1144,7 @@
    "kind": "questionnaire",
    "student_message_id": "msg-user-v1-TFMxoc3Rm5_VUR6bRk0d7d9TDLUUU2DS-EwiXPV8TIc",
    "student": "Q: 这次判 0 分的评测，锁定的是哪个 commit SHA？  \nA: 42dc2c1d（最新：字典落盘+协议修正版）\n\nQ: 能否把平台的失败类别和日志贴给我？  \nA: 平台只给了“未通过”，没有别的",
-   "agent_reply": "确认了：评测锁的是 **42dc2c1d**（协议修正版），而平台只给「未通过」——没有失败类别。所以我得自己找出是哪个隐藏用例挂了。\n\n先看公开用例用了哪些 SQL 形态，找出「相邻但没覆盖」的缺口。\n…\n公开用例覆盖的是基础形态。**有一个明显缺口：`LIMIT` 只用过 `LIMIT n`，没覆盖过 `LIMIT offset, count` / `LIMIT n OFFSET m`**。先查我的解析器。\n…\n`LIMIT 1,2` / `LIMIT 2 OFFSET …（本轮回复较长，此处保留开头）"
+   "agent_reply": "确认了：评测锁的是 **42dc2c1d**（协议修正版），而平台只给「未通过」——没有失败类别。所以我得自己找出是哪个隐藏用例挂了。\n\n先看公开用例用了哪些 SQL 形态，找出「相邻但没覆盖」的缺口。\n…\n公开用例覆盖的是基础形态。**有一个明显缺口：`LIMIT` 只用过 ` …（本轮回复较长，此处保留开头）"
   },
   {
    "id": "d15",
@@ -1134,7 +1152,7 @@
    "kind": "message",
    "student_message_id": "msg-user-v1-k-FiPbiocTSl-7XfNdcQvfm16UOrdSZvfDLu14MrRsM",
    "student": "隐藏用例也得全部通过。",
-   "agent_reply": "明白——29 个正式用例必须全过。那就不能只修已知的那一处，得把语义整体验一遍。我写一个**随机差分测试**：用最朴素的 Python 参考实现，对随机数据和随机查询逐条比对优化后的引擎。\n…\n差分测试立刻抓到一个差异：**无 ORDER BY 的查询行序**不同（我的按槽位=插入序，参考按主键序）。题面写明这类结果「按集合比较」，所以判定为等价——但我按这个规则调整差分口径，继续跑长的随机测试找真问题。\n…\n这条揭示了一个关键点：**无 ORDER BY + LIMIT 的 …（本轮回复较长，此处保留开头）"
+   "agent_reply": "明白——29 个正式用例必须全过。那就不能只修已知的那一处，得把语义整体验一遍。我写一个**随机差分测试**：用最朴素的 Python 参考实现，对随机数据和随机查询逐条比对优化后的引擎。\n…\n差分测试立刻抓到一个差异：**无 ORDER BY 的查询行序**不同（我的按槽位=插 …（本轮回复较长，此处保留开头）"
   },
   {
    "id": "d16",
@@ -1142,7 +1160,7 @@
    "kind": "message",
    "student_message_id": "msg-user-v1-5lYGWPtVB2ULWuuBhyB9VbDCA9doT7umrX1K1LuadF4",
    "student": "这个题难就难在官方什么都不给。不告诉任何错误信息。",
-   "agent_reply": "官方不给任何信息，确实是这个题最难的地方。我的应对是把「信息不足」变成「自己造信息」：**按题面七个类别自己写一批隐藏用例**，用手算的预期结果，跑官方驱动。\n\n先写这批用例（预期结果全部手算，不取自实现）：\n…\n自造的隐藏用例跑起来了——**18 个里 3 个失败，全是我手写预期写错**（第一条 BEGIN 本该成功、`LIMIT 1 OFFSET 2` 我多写了一行、字符串序我按汉字算但用例里是 ASCII）。引擎本身是对的。修正预期重跑：\n…\n**18/18 自造的隐藏 …（本轮回复较长，此处保留开头）"
+   "agent_reply": "官方不给任何信息，确实是这个题最难的地方。我的应对是把「信息不足」变成「自己造信息」：**按题面七个类别自己写一批隐藏用例**，用手算的预期结果，跑官方驱动。\n\n先写这批用例（预期结果全部手算，不取自实现）：\n…\n自造的隐藏用例跑起来了——**18 个里 3 个失败，全是我手写预 …（本轮回复较长，此处保留开头）"
   },
   {
    "id": "d17",
@@ -1150,7 +1168,7 @@
    "kind": "message",
    "student_message_id": "msg-user-v1-NtV9dVp7UYFzk0BkSz_hjQZWzw68NR7i4VyaiiMayT4",
    "student": "已经得上一部分分了！MySQL也通过了！继续优化继续加油！",
-   "agent_reply": "**准入通过了！** 这说明上一轮修的事务可见性是对的。三个结果里有一个明显异常：\n\n- MySQL 正式用例：**通过** ✓（准入门槛达成）\n- 性能：E = 772.55 ✓（评测完成）\n- **Agent Prompt 原始分 = 2.0** ✗✗ —— 这个基本等于没拿到分，是现在最大的提分空间\n\n我先并行做两件事：诊断性能口径，同时重构对话材料（评分规则的五个维度需要**互不重复、可被 JSON pointer 定位**的证据实例，我怀疑现在的结构让评审几乎找不到 …（本轮回复较长，此处保留开头）"
+   "agent_reply": "**准入通过了！** 这说明上一轮修的事务可见性是对的。三个结果里有一个明显异常：\n\n- MySQL 正式用例：**通过** ✓（准入门槛达成）\n- 性能：E = 772.55 ✓（评测完成）\n- **Agent Prompt 原始分 = 2.0** ✗✗ —— 这个基本等于没拿 …（本轮回复较长，此处保留开头）"
   },
   {
    "id": "d18",
@@ -1158,7 +1176,7 @@
    "kind": "message",
    "student_message_id": "msg-user-v1-8fLHhoTYyOniGiNknTd4lzNZUdMK4lE1VMNTPqq3EJo",
    "student": "刚刚提交了但是为什么不给分啊，一分都没有。你再完成这个任务，必须有分！",
-   "agent_reply": "**提交是成功的**（提测记录：执行成功、成功 1 / 失败 0），\"没给分\"不是 0 分，是**得分还没结算**——题面写明原始分只用于排序，最终得分 = `max(40 − 0.5×(排名−1), 0)`，截止后统一结算。\n\n而两个原始分的变化很说明问题：**性能 772.55 → 975.37（+26%，我的优化确实生效了）**，但 **Agent Prompt 只有 2.0 → 2.5** ✗。\n\n这个 2.5 才是真正的线索。我怀疑症结在这里：\n…\n完整的评分规则我 …（本轮回复较长，此处保留开头）"
+   "agent_reply": "**提交是成功的**（提测记录：执行成功、成功 1 / 失败 0），\"没给分\"不是 0 分，是**得分还没结算**——题面写明原始分只用于排序，最终得分 = `max(40 − 0.5×(排名−1), 0)`，截止后统一结算。\n\n而两个原始分的变化很说明问题：**性能 772.5 …（本轮回复较长，此处保留开头）"
   },
   {
    "id": "d19",
@@ -1191,6 +1209,22 @@
    "student_message_id": "ask_b37492f02dbc7026e045b9e5",
    "student": "Q: 上面的召回率都是在「均匀随机」数据上测的；真实数据若有聚集结构，结论可能不成立。要不要在有聚集结构的数据上再测一次？  A: 要，复测一次",
    "agent_reply": "构造了三种分布（均匀随机、16 个高斯团、80% 集中在一个团里）重测，复测的结果推翻了「聚集数据更难」的猜想。"
+  },
+  {
+   "id": "d23",
+   "turn": "questionnaire-2026-11-13",
+   "kind": "questionnaire",
+   "student_message_id": "ask_6da479161e7379c3f2c18660",
+   "student": "Q: 复测结果：均匀随机数据上 nprobe=16 召回只有 0.544，而聚集数据 0.9997、倾斜数据 1.0——聚集结构反而更容易。为什么？  A: 因为近邻都落在同一个簇里，均匀分布的近邻散在各个簇",
+   "agent_reply": "学生自己解释了倒排表的机理：查询点的近邻在同一个簇里时探一次就够，均匀分布的近邻散在各个簇里，所以均匀随机才是最难的情形。"
+  },
+  {
+   "id": "d24",
+   "turn": "questionnaire-2026-11-13",
+   "kind": "questionnaire",
+   "student_message_id": "ask_6da479161e7379c3f2c18660",
+   "student": "Q: 展开式在你本机快 70%，评测容器里却慢 2.5 倍——原因是 BLAS 为这个尺寸起线程池，2 核容器每次调用都要唤醒线程。这条经验说明什么？  A: 性能结论必须在评测环境里量，本机数字只能当线索",
+   "agent_reply": "据此把线程序数写进镜像与程序入口，之后所有性能结论都先在评测容器里量一遍再采信。"
   }
  ],
  "learning_units": [
@@ -1385,6 +1419,38 @@
     "snippet": "checkpoint     write  2.940s   recover  0.017s"
    },
    "chain": "把检查点策略做成一次对照实验（/experiments/34/output）→ 学生选择每次提交都写（/dialogue/20/student）→ 代价是写入慢 11.8%，换来的是崩溃恢复从 18.896 秒降到 0.017 秒、数据目录从 13.15 MiB 降到 5.04 MiB；恢复的上限是 120 秒，按 18.9 秒/万行外推，20 万行的日志根本放不进去。"
+  },
+  {
+   "id": "u13",
+   "dimension": "技术理解与迁移",
+   "tier": 1.5,
+   "title": "用自己的话解释倒排表在聚集数据上更容易的原因",
+   "student_role": "学生没有停在「聚集数据召回更高」这个结果上，而是解释了机理：近邻落在同一个簇里时探一次就够，均匀分布的近邻散在各个簇里。",
+   "student_evidence": {
+    "pointer": "/dialogue/22/student",
+    "snippet": "A: 因为近邻都落在同一个簇里，均匀分布的近邻散在各个簇"
+   },
+   "result_evidence": {
+    "pointer": "/experiments/33/output",
+    "snippet": "nprobe= 16  recall=0.544200  16.780 ms/query"
+   },
+   "chain": "在均匀随机的数据上实测：召回随探针数单调上升，16 个簇只有 0.544、64 个簇才有 1.0（/experiments/33/output）——这正是「近邻散在各个簇」的表现 → 学生要求换分布复测（/dialogue/21/student）→ 复测（/experiments/35/output）→ 学生用自己的话解释了这个机理（/dialogue/22/student）→ 解释与两种分布的实测一致，并支持了把探针数提到全部的簇这个决定。"
+  },
+  {
+   "id": "u14",
+   "dimension": "实验与反馈迭代",
+   "tier": 1.5,
+   "title": "解释「本机更快、评测容器更慢」这个反常结果，并据此定规矩",
+   "student_role": "学生把本机与评测环境的矛盾归纳成一条方法：性能结论必须在评测环境里量，本机数字只能当线索。",
+   "student_evidence": {
+    "pointer": "/dialogue/23/student",
+    "snippet": "A: 性能结论必须在评测环境里量，本机数字只能当线索"
+   },
+   "result_evidence": {
+    "pointer": "/experiments/39/output",
+    "snippet": "query through the executor : 4.511 ms"
+   },
+   "chain": "距离计算改成展开式之后，本机快 70%（1.53 ms → 0.45 ms），评测容器里却慢 2.5 倍（3.8 ms → 10.0 ms）→ 在容器里用 cProfile 拆开才看清是线性代数库的线程池：一次矩阵乘 1.13 ms 对 0.033 ms（/experiments/39/output）→ 学生把这条经验总结为「性能结论必须在评测环境里量」（/dialogue/23/student）→ 修正：线程序数写进镜像与程序入口 → 复测：经协议一条查询 3.04 ms，比上一版的 4.01 ms 还快 24%。"
   }
  ]
 }

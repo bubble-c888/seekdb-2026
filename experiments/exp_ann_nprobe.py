@@ -25,10 +25,9 @@ import argparse
 import json
 import random
 import sys
-from pathlib import Path
 import time
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, r"E:\MiniVectorDB\seekdb-round2")
 
 import numpy as np  # noqa: E402
 

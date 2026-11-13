@@ -31,7 +31,7 @@ import sys
 import time
 from pathlib import Path
 
-REPO = str(Path(__file__).resolve().parent.parent)
+REPO = r"E:\MiniVectorDB\seekdb-round2"
 WORK = Path(r"E:\MiniVectorDB\runs\checkpoint_exp")
 
 LOAD = r'''

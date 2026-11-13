@@ -16,7 +16,10 @@ FROM python:3.13-slim-bookworm
 ENV PYTHONUNBUFFERED=1 \
     PYTHONDONTWRITEBYTECODE=1 \
     PIP_NO_CACHE_DIR=1 \
-    MINIVECTORDB_DATA_DIR=/data
+    MINIVECTORDB_DATA_DIR=/data \
+    OPENBLAS_NUM_THREADS=1 \
+    OMP_NUM_THREADS=1 \
+    MKL_NUM_THREADS=1
 
 # numpy is the only third party dependency: it provides the float32 arithmetic
 # of the vector index and the vectorised scans.  The version is pinned.

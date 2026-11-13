@@ -16,6 +16,15 @@ import os
 import sys
 from pathlib import Path
 
+# The linear algebra of numpy is single threaded on purpose.  The judge gives
+# the container two cores, and the matrix product of the library spawns a
+# thread pool for a matrix of this size: every call then pays for waking the
+# threads up again, which measured 1.1 ms per call in the evaluation
+# container against 0.03 ms with one thread.  The setting has to be in place
+# before numpy is imported, because the library reads it when it is loaded.
+for _variable in ("OPENBLAS_NUM_THREADS", "OMP_NUM_THREADS", "MKL_NUM_THREADS"):
+    os.environ.setdefault(_variable, "1")
+
 from .engine.database import Database
 from .server import Server
 

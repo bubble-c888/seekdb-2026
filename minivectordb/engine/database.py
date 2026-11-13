@@ -159,7 +159,8 @@ class Database:
                     column=payload["column"],
                     dim=int(payload["dim"]),
                     clusters=int(payload.get("clusters", 0)),
-                    nprobe=int(payload.get("nprobe", 1)),
+                    # Every cluster is probed, see the creation of the index.
+                    nprobe=int(payload.get("clusters", 0)) or 1,
                     lists=payload.get("lists", {}),
                     radii=payload.get("radii", {}),
                 )

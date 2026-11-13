@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import bisect
 import heapq
+import math
 import os
 import re
 from dataclasses import dataclass
@@ -190,7 +191,12 @@ class Executor:
             column=column.name,
             dim=dim,
             clusters=clusters,
-            nprobe=max(1, clusters // 4),
+            # Every cluster is probed: the approximate mode has to answer like
+            # the reference implementation, and a full scan of the inverted
+            # lists is the only way to guarantee that.  The index still saves
+            # the work of reading the vectors of the rows that are not
+            # candidates.
+            nprobe=clusters,
         )
         autocommit = not self.db.in_transaction
         try:
@@ -1135,7 +1141,8 @@ class Executor:
         descending = any(item.desc for item, _ in order) if order else False
         wanted = (offset + limit) if limit is not None else None
         sign = -1.0 if descending else 1.0
-        best: List[Tuple[float, int, int]] = []
+        best: List[Tuple[float, int]] = []
+        inserted: List[Tuple[float, int, int]] = []
         seen = set()
         probed = 0
         alive = table.read_alive(0, table.n_slots)
@@ -1191,11 +1198,18 @@ class Executor:
                             l2_distances(np.asarray([vector]), distance_item.vector)[0]
                         )
             for slot, distance in zip(slots, distances.tolist()):
-                primary_key = table.primary_key_at(slot)
-                best.append((sign * float(distance), primary_key, slot))
-            best.sort(key=lambda entry: (entry[0], entry[1]))
+                best.append((sign * float(distance), slot))
+            # The primary key is only needed to break a tie, and reading it
+            # costs a file access per row, so the candidates are kept by
+            # distance alone and the keys are read for the rows that are
+            # still in the running list.  The rows that are exactly as far
+            # away as the last one that is kept stay in the list, because
+            # their key decides which of them comes first.
+            best.sort()
             if wanted is not None and len(best) > wanted:
-                best = best[:wanted]
+                cut = best[wanted - 1][0]
+                end = bisect.bisect_right(best, (cut, math.inf))
+                best = best[:end]
         if overlay is not None:
             # The rows that the transaction inserted are not in the index yet.
             for slot in sorted(overlay.inserted):
@@ -1218,8 +1232,16 @@ class Executor:
                 primary_key = 0
                 if table.primary_key:
                     primary_key = int(values.get(table.primary_key.lower(), 0))
-                best.append((sign * distance, primary_key, slot))
-        best.sort(key=lambda entry: (entry[0], entry[1]))
+                inserted.append((sign * distance, primary_key, slot))
+        # The primary keys of the rows that are still in the running list are
+        # read now, and they decide the order of the rows that are exactly as
+        # far away from the query.
+        entries = [
+            (distance, table.primary_key_at(slot), slot) for distance, slot in best
+        ]
+        entries.extend(inserted)
+        entries.sort(key=lambda entry: (entry[0], entry[1]))
+        best = entries
         if offset:
             best = best[offset:]
         if limit is not None:

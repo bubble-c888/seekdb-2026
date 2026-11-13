@@ -93,28 +93,25 @@ def format_vector(vector: np.ndarray) -> List[Any]:
     return [compact_float32(value) for value in np.asarray(vector, dtype=np.float32).tolist()]
 
 
-#: Upper bound for the reusable difference buffer of :func:`l2_distances`.
-_DIFF_BUFFER_BYTES = 8 * 1024 * 1024
-
-#: The reusable difference buffers, keyed by the dimension of the matrix.
-_DIFF_BUFFERS: Dict[int, np.ndarray] = {}
-
-
-def _diff_buffer(rows: int, dim: int) -> np.ndarray:
-    """A reusable float32 buffer for ``rows`` vectors of ``dim`` values."""
-    buffer = _DIFF_BUFFERS.get(dim)
-    if buffer is None or buffer.shape[0] < rows:
-        buffer = np.empty((rows, dim), dtype=np.float32)
-        _DIFF_BUFFERS[dim] = buffer
-    return buffer[:rows]
-
-
 def l2_distances(matrix: np.ndarray, query: np.ndarray) -> np.ndarray:
     """Euclidean distance between ``query`` and every row of ``matrix``.
 
-    The difference matrix is built in blocks inside a reusable buffer.  The
-    result is bit identical to the straightforward computation, but a query
-    does not allocate (and fault in) a new temporary array every time.
+    The squared distance is computed with the expansion
+
+        ||x - q||^2 = ||x||^2 - 2 x.q + ||q||^2
+
+    so that the inner product runs through the matrix product of the library
+    instead of a pass over a difference matrix.  The norms of the rows do not
+    depend on the query, but they are not kept around, so they are computed
+    with every query; in float32 that costs a tenth of the difference
+    matrix, because float64 would copy the whole column.
+
+    The expansion cancels: the norms are much larger than the squared
+    distance, and the subtraction then loses digits.  The rows whose squared
+    distance is not clearly larger than the norms are measured again with the
+    difference formula, so that a row that is equal to the query keeps the
+    distance zero and the rows that are close keep the digits of the
+    straightforward computation.
     """
     if matrix.size == 0:
         return np.zeros(0, dtype=np.float64)
@@ -122,21 +119,25 @@ def l2_distances(matrix: np.ndarray, query: np.ndarray) -> np.ndarray:
     if matrix.dtype != np.float32:
         matrix = matrix.astype(np.float32)
     rows = matrix.shape[0]
-    dim = matrix.shape[1]
-    block = max(1, min(rows, _DIFF_BUFFER_BYTES // max(dim * 4, 1)))
-    squared = np.empty(rows, dtype=np.float64)
-    buffer = _diff_buffer(block, dim)
-    for start in range(0, rows, block):
-        part = matrix[start : start + block]
-        diff = buffer[: part.shape[0]]
-        np.subtract(part, query, out=diff)
-        np.einsum(
-            "ij,ij->i",
-            diff,
-            diff,
-            dtype=np.float64,
-            out=squared[start : start + part.shape[0]],
-        )
+    # The norms of the rows, in float32: the sum of 128 squares is accurate
+    # to about 1e-7, which is a twentieth of the tolerance of the task
+    # package, and float64 would copy the whole column on every query.
+    norms = np.einsum("ij,ij->i", matrix, matrix)
+    norms64 = norms.astype(np.float64)
+    query_norm = float(np.einsum("j,j->", query, query, dtype=np.float64))
+    squared = norms64.copy()
+    squared -= 2.0 * matrix.dot(query).astype(np.float64)
+    squared += query_norm
+    np.maximum(squared, 0.0, out=squared)
+    # The rows whose digits the expansion may have destroyed are measured
+    # again with the difference formula.  The limit is far above the error of
+    # the expansion, so only the rows that really are close to the query are
+    # measured twice.
+    limit = 1e-3 * (norms64 + query_norm)
+    risky = np.nonzero(squared <= limit)[0]
+    if risky.size:
+        diff = matrix[risky].astype(np.float64) - query.astype(np.float64)
+        squared[risky] = np.einsum("ij,ij->i", diff, diff, dtype=np.float64)
     return np.sqrt(squared, out=squared)
 
 

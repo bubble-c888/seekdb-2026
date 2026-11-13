@@ -30,7 +30,7 @@ import tempfile
 import time
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+sys.path.insert(0, r"E:\MiniVectorDB\seekdb-round2")
 
 # The fallback is switched off before the engine is imported, so that the
 # approximate mode really uses the inverted lists of the index.
@@ -71,6 +71,7 @@ def main() -> int:
     vectors = rng.normal(size=(arguments.rows, arguments.dim)).astype(np.float32)
     categories = ["c%d" % index for index in range(10)]
     began = time.perf_counter()
+    inserted = 0
     for start in range(0, arguments.rows, arguments.batch):
         rows = []
         for offset in range(start, min(start + arguments.batch, arguments.rows)):
@@ -78,8 +79,10 @@ def main() -> int:
                 "(%d, '%s', '%s')"
                 % (offset + 1, categories[offset % len(categories)], literal(vectors[offset]))
             )
-        executor.execute(parse("INSERT INTO bench VALUES " + ", ".join(rows) + ";"))
+        answer = executor.execute(parse("INSERT INTO bench VALUES " + ", ".join(rows) + ";"))
+        inserted += int(answer.get("affected_rows", 0))
     write_seconds = time.perf_counter() - began
+    print("rows written: {} of {}".format(inserted, arguments.rows))
     began = time.perf_counter()
     executor.execute(parse("CREATE VECTOR INDEX idx_bench ON bench(e);"))
     build_seconds = time.perf_counter() - began
@@ -91,6 +94,9 @@ def main() -> int:
 
     query_vectors = rng.normal(size=(arguments.queries, arguments.dim)).astype(np.float32)
     category_of = np.asarray([index % len(categories) for index in range(arguments.rows)])
+    category_number = np.asarray(
+        [categories.index(categories[index % len(categories)]) for index in range(arguments.rows)]
+    )
 
     # The brute force answer, computed over the whole table.
     truth = []
@@ -99,12 +105,13 @@ def main() -> int:
         difference = vectors - query
         distance = np.sqrt((difference * difference).sum(axis=1, dtype=np.float64))
         if index % 2 == 0:
-            mask = category_of == categories[index % len(categories)]
+            mask = category_number == index % len(categories)
             candidates = np.nonzero(mask)[0]
             picked = candidates[np.argsort(distance[candidates], kind="stable")[:10]]
         else:
             picked = np.argsort(distance, kind="stable")[:10]
-        truth.append({int(value) for value in picked})
+        # The primary keys of the table start at 1.
+        truth.append({int(value) + 1 for value in picked})
 
     def measure(mode, nprobe=None):
         database.mode = mode
@@ -128,6 +135,12 @@ def main() -> int:
             answered = {int(row[0]) for row in rows}
             hits += len(answered & truth[index])
             total += min(10, len(truth[index]))
+            if index == 0:
+                print(
+                    "  first query: answered {} rows, {} of them in the truth".format(
+                        len(answered), len(answered & truth[index])
+                    )
+                )
         elapsed = time.perf_counter() - began
         return {
             "recall": round(hits / total, 6) if total else 1.0,

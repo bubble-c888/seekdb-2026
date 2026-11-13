@@ -802,7 +802,7 @@
     "/experiments/22/output",
     "/dialogue/14/student",
     "/experiments/28/output",
-    "/dialogue/25/student",
+    "/dialogue/29/student",
     "/experiments/41/output"
    ],
    "技术理解与迁移":[
@@ -811,7 +811,7 @@
     "/user_prompts/4/content",
     "/dialogue/22/student",
     "/experiments/33/output",
-    "/dialogue/24/student",
+    "/dialogue/28/student",
     "/experiments/40/output"
    ],
    "实验与反馈迭代":[
@@ -938,15 +938,15 @@
    {
     "id":"u15",
     "dimension":"技术理解与迁移",
-    "tier":1.0,
-    "student_evidence_pointer":"/dialogue/24/student",
+    "tier":1.5,
+    "student_evidence_pointer":"/dialogue/28/student",
     "result_evidence_pointer":"/experiments/40/output"
    },
    {
     "id":"u16",
     "dimension":"独立验证与质疑",
-    "tier":1.0,
-    "student_evidence_pointer":"/dialogue/25/student",
+    "tier":1.5,
+    "student_evidence_pointer":"/dialogue/29/student",
     "result_evidence_pointer":"/experiments/41/output"
    },
    {
@@ -972,7 +972,7 @@
    "kind":"message",
    "student_message_id":"msg-user-v1-FQ-CMialXqlv1GtrrkLFbk0ByXr74SP6STxYPrqGVCQ",
    "student":"https://oceanbase.yuque.com/org-wiki-obtech-vh7w9r/hc3pio/lg8enxlmwg69unt6 完成这个链接的任务，必须都符合要求。拿不准的事情问我，你做不了的指导我做，最后交付给我Commit id和Branch",
-   "agent_reply":"我先看看这个语雀链接的内容，同时确认一下当前工作区状态。\n…\n页面是 SPA 渲染的，我用 Yuque API 取正文，同时确认一下工作区和本机工具。\n…\n需要先拿到语雀文档正文。我先加载 mcode …（本轮回复较长，此处保留开头）"
+   "agent_reply":"我先看看这个语雀链接的内容，同时确认一下当前工作区状态。\n…\n页面是 SPA 渲染的，我用 Yuque API …（本轮回复较长，此处保留开头）"
   },
   {
    "id":"d02",
@@ -980,7 +980,7 @@
    "kind":"message",
    "student_message_id":"msg-user-v1-nzDP0_ied7AI6ZBTPHm-6ILu2JJVjCtSMJjpwpbE008",
    "student":"好像没有发布提包",
-   "agent_reply":"Let me check the unread background tasks and verify the remote state on GitHub.\n…\nThose are stale ta …（本轮回复较长，此处保留开头）"
+   "agent_reply":"Let me check the unread background tasks and verify the …（本轮回复较长，此处保留开头）"
   },
   {
    "id":"d03",
@@ -988,7 +988,7 @@
    "kind":"message",
    "student_message_id":"msg-user-v1-3T2bXS-kEuhL3tnbNUGr16bNCZmm_MD8ezSIxmtE9YA",
    "student":"点开是这个页面，不知道怎么操作‘",
-   "agent_reply":"让我看一下当前浏览器的登录状态和这个仓库的归属，才能判断为什么没有权限。\n…\nThe screenshot is from your own Chrome — the in-app Browser d …（本轮回复较长，此处保留开头）"
+   "agent_reply":"让我看一下当前浏览器的登录状态和这个仓库的归属，才能判断为什么没有权限。\n…\nThe screenshot i …（本轮回复较长，此处保留开头）"
   },
   {
    "id":"d04",
@@ -996,7 +996,7 @@
    "kind":"message",
    "student_message_id":"msg-user-v1-GIm0l7a__IV2kSq9DBRsTjSvr09o6Lrs7sDORYM0Gh8",
    "student":"目前已经在这个页面把他改为私有的了",
-   "agent_reply":"让我直接匿名验证一下当前状态——页面那句 \"This repository is currently public\" 其实说的是**已经公开了**。\n…\n**成功了——仓库现在是 public，判题机 …（本轮回复较长，此处保留开头）"
+   "agent_reply":"让我直接匿名验证一下当前状态——页面那句 \"This repository is currently publ …（本轮回复较长，此处保留开头）"
   },
   {
    "id":"d05",
@@ -1004,7 +1004,7 @@
    "kind":"message",
    "student_message_id":"msg-user-v1-4_r46-uf5CX8hSa7Zb-Yq1hK4meUS58aGgrcHaHFMEs",
    "student":"提测出现了这个，并没有通过",
-   "agent_reply":"收到，这是准入失败——**一个用例不过就总分 0**，所以得先定位。我先做三件事：查最可能的硬伤，同时请你把详情日志给我。"
+   "agent_reply":"收到，这是准入失败——**一个用例不过就总分 0**，所以得先定位。我先做三件事：查最可能的硬伤，同时请你把详 …（本轮回复较长，此处保留开头）"
   },
   {
    "id":"d06",
@@ -1012,7 +1012,7 @@
    "kind":"message",
    "student_message_id":"msg-user-v1--CE8tlFwGZ8B33KYZwCGR0CW0y4NOc1hC2RJxII1RE0",
    "student":"MYSQL这个过不了后面都白搭。你先把这个过了，查一查哪里的问题",
-   "agent_reply":"先把上游题包再拉一遍——**如果官方驱动已经随题包发出来了**，那就直接照它对齐，比猜快得多。\n…\n**上游题包已经更新了！** 从 5 个用例扩到 20 个，而且分支 tip 从 `a3dba55` …（本轮回复较长，此处保留开头）"
+   "agent_reply":"先把上游题包再拉一遍——**如果官方驱动已经随题包发出来了**，那就直接照它对齐，比猜快得多。\n…\n**上游题 …（本轮回复较长，此处保留开头）"
   },
   {
    "id":"d07",
@@ -1020,7 +1020,7 @@
    "kind":"message",
    "student_message_id":"msg-user-v1-XpQKIcYm-_J6LWd1vf9foCzXZXfXR0HU6kgxbLFzGCM",
    "student":"这个任务执行完成后给电脑锁定",
-   "agent_reply":"任务已完成，先做最后一次状态确认，然后锁定电脑。\n…\n锁定没生效（输入桌面仍是 Default）。我换用直接 API 调用并检查返回值。\n…\n锁定接口调用成功（`LockWorkStation` 返回 …（本轮回复较长，此处保留开头）"
+   "agent_reply":"任务已完成，先做最后一次状态确认，然后锁定电脑。\n…\n锁定没生效（输入桌面仍是 Default）。我换用直接 …（本轮回复较长，此处保留开头）"
   },
   {
    "id":"d08",
@@ -1028,7 +1028,7 @@
    "kind":"message",
    "student_message_id":"msg-user-v1-5gAcOi1FeVAsjzN0BIwxYOokrH72s6T4NEybdUz8abY",
    "student":"这个是需要下载docker吗，那就下载呗，放到E盘里。然后把处理任务产生的数据全部放到G盘里，可以新建文件夹，原来的数据就可以从电脑删除了",
-   "agent_reply":"先摸清环境：系统版本、WSL/Docker 可用性、磁盘空间、以及要搬走的数据体量。\n…\nWindows 11 家庭版 + WSL2 都在，Docker Desktop 可装。先确认几件事：admin …（本轮回复较长，此处保留开头）"
+   "agent_reply":"先摸清环境：系统版本、WSL/Docker 可用性、磁盘空间、以及要搬走的数据体量。\n…\nWindows 11 …（本轮回复较长，此处保留开头）"
   },
   {
    "id":"d09",
@@ -1036,7 +1036,7 @@
    "kind":"message",
    "student_message_id":"msg-user-v1-rDm5sOl7TJBTBo1W2tT7FnpCkZEDoHl8kKCZ4kcq5eo",
    "student":"仅这个任务产生的所有数据都放到G盘里。如果是给电脑下载的应用那就存到E盘，如果是运行产生的数据那就放G盘",
-   "agent_reply":"收到，我按这个规则核对一遍盘符归属：应用（含其自身运行目录）在 E:，本任务产生的代码/脚本/日志/报告/测试数据在 G:。先检查 E: 上是否残留任务数据。\n…\nE: 归属清晰：只有 Docker …（本轮回复较长，此处保留开头）"
+   "agent_reply":"收到，我按这个规则核对一遍盘符归属：应用（含其自身运行目录）在 E:，本任务产生的代码/脚本/日志/报告/测试 …（本轮回复较长，此处保留开头）"
   },
   {
    "id":"d10",
@@ -1044,7 +1044,7 @@
    "kind":"message",
    "student_message_id":"msg-user-v1-q_TCZHfMA1fwqDjHtvbP-0ID-qXeruVddRwgEv4alcU",
    "student":"不用U盘了，全存E盘",
-   "agent_reply":"收到——改为全部存 E 盘。先量一下 G 盘上的数据量，再迁移。\n…\n大部分已迁移。剩下的 `protocol`、`runs`、`verify-final` 和 `verify-clone` 继续搬。 …（本轮回复较长，此处保留开头）"
+   "agent_reply":"收到——改为全部存 E 盘。先量一下 G 盘上的数据量，再迁移。\n…\n大部分已迁移。剩下的 `protocol …（本轮回复较长，此处保留开头）"
   },
   {
    "id":"d11",
@@ -1052,7 +1052,7 @@
    "kind":"message",
    "student_message_id":"msg-user-v1-h8NOEySW8NQuL7cEZ2AUstOBRsW7GytS9lrSCk0H3Fg",
    "student":"任务运行完锁屏",
-   "agent_reply":"已锁屏。\n\n任务全部完成，提交信息再留一份备查：\n\n- 仓库：`https://github.com/bubble-c888/seekdb-2026`\n- 分支：`2026-competition-r …（本轮回复较长，此处保留开头）"
+   "agent_reply":"已锁屏。\n\n任务全部完成，提交信息再留一份备查：\n\n- 仓库：`https://github.com/bubb …（本轮回复较长，此处保留开头）"
   },
   {
    "id":"d12",
@@ -1060,7 +1060,7 @@
    "kind":"message",
    "student_message_id":"msg-user-v1-RtkyWDzrMGzZUMNkFHECahwu88F9p_oLeM8rakdjIvs",
    "student":"https://oceanbase.yuque.com/org-wiki-obtech-vh7w9r/hc3pio/lg8enxlmwg69unt6 继续完成这个题目",
-   "agent_reply":"我先把赛题原文重新拉下来，逐条对照当前实现，再决定接着补什么。\n…\n页面是 JS 渲染的，直接抓取拿不到正文。我用内置浏览器打开赛题原文。\n…\n内置浏览器里语雀的 React 应用没有渲染出正文。我换 …（本轮回复较长，此处保留开头）"
+   "agent_reply":"我先把赛题原文重新拉下来，逐条对照当前实现，再决定接着补什么。\n…\n页面是 JS 渲染的，直接抓取拿不到正文。 …（本轮回复较长，此处保留开头）"
   },
   {
    "id":"d13",
@@ -1068,7 +1068,7 @@
    "kind":"message",
    "student_message_id":"msg-user-v1-GNLYBmKqA7Zik0Zqg67t2Dw3tO7HIZlpxzT-uLZbPEw",
    "student":"这题是0分，MySQL正式用例没有通过，这是准入条件。",
-   "agent_reply":"收到。这是准入失败=0分，必须立刻定位。截图里只有「未通过」，平台按规则会给出失败类别和必要日志——那两样信息能直接指出是哪个用例。\n\n我先并行做两件事：请你提供平台细节，同时我自己排查最可能的失败点 …（本轮回复较长，此处保留开头）"
+   "agent_reply":"收到。这是准入失败=0分，必须立刻定位。截图里只有「未通过」，平台按规则会给出失败类别和必要日志——那两样信息 …（本轮回复较长，此处保留开头）"
   },
   {
    "id":"d14",
@@ -1076,7 +1076,7 @@
    "kind":"questionnaire",
    "student_message_id":"msg-user-v1-TFMxoc3Rm5_VUR6bRk0d7d9TDLUUU2DS-EwiXPV8TIc",
    "student":"Q: 这次判 0 分的评测，锁定的是哪个 commit SHA？  \nA: 42dc2c1d（最新：字典落盘+协议修正版）\n\nQ: 能否把平台的失败类别和日志贴给我？  \nA: 平台只给了“未通过”，没有别的",
-   "agent_reply":"确认了：评测锁的是 **42dc2c1d**（协议修正版），而平台只给「未通过」——没有失败类别。所以我得自己找出是哪个隐藏用例挂了。\n\n先看公开用例用了哪些 SQL 形态，找出「相邻但没覆盖」的缺口 …（本轮回复较长，此处保留开头）"
+   "agent_reply":"确认了：评测锁的是 **42dc2c1d**（协议修正版），而平台只给「未通过」——没有失败类别。所以我得自己 …（本轮回复较长，此处保留开头）"
   },
   {
    "id":"d15",
@@ -1084,7 +1084,7 @@
    "kind":"message",
    "student_message_id":"msg-user-v1-k-FiPbiocTSl-7XfNdcQvfm16UOrdSZvfDLu14MrRsM",
    "student":"隐藏用例也得全部通过。",
-   "agent_reply":"明白——29 个正式用例必须全过。那就不能只修已知的那一处，得把语义整体验一遍。我写一个**随机差分测试**：用最朴素的 Python 参考实现，对随机数据和随机查询逐条比对优化后的引擎。\n…\n差分测 …（本轮回复较长，此处保留开头）"
+   "agent_reply":"明白——29 个正式用例必须全过。那就不能只修已知的那一处，得把语义整体验一遍。我写一个**随机差分测试**： …（本轮回复较长，此处保留开头）"
   },
   {
    "id":"d16",
@@ -1092,7 +1092,7 @@
    "kind":"message",
    "student_message_id":"msg-user-v1-5lYGWPtVB2ULWuuBhyB9VbDCA9doT7umrX1K1LuadF4",
    "student":"这个题难就难在官方什么都不给。不告诉任何错误信息。",
-   "agent_reply":"官方不给任何信息，确实是这个题最难的地方。我的应对是把「信息不足」变成「自己造信息」：**按题面七个类别自己写一批隐藏用例**，用手算的预期结果，跑官方驱动。\n\n先写这批用例（预期结果全部手算，不取自 …（本轮回复较长，此处保留开头）"
+   "agent_reply":"官方不给任何信息，确实是这个题最难的地方。我的应对是把「信息不足」变成「自己造信息」：**按题面七个类别自己写 …（本轮回复较长，此处保留开头）"
   },
   {
    "id":"d17",
@@ -1100,7 +1100,7 @@
    "kind":"message",
    "student_message_id":"msg-user-v1-NtV9dVp7UYFzk0BkSz_hjQZWzw68NR7i4VyaiiMayT4",
    "student":"已经得上一部分分了！MySQL也通过了！继续优化继续加油！",
-   "agent_reply":"**准入通过了！** 这说明上一轮修的事务可见性是对的。三个结果里有一个明显异常：\n\n- MySQL 正式用例：**通过** ✓（准入门槛达成）\n- 性能：E = 772.55 ✓（评测完成）\n- * …（本轮回复较长，此处保留开头）"
+   "agent_reply":"**准入通过了！** 这说明上一轮修的事务可见性是对的。三个结果里有一个明显异常：\n\n- MySQL 正式用例 …（本轮回复较长，此处保留开头）"
   },
   {
    "id":"d18",
@@ -1108,7 +1108,7 @@
    "kind":"message",
    "student_message_id":"msg-user-v1-8fLHhoTYyOniGiNknTd4lzNZUdMK4lE1VMNTPqq3EJo",
    "student":"刚刚提交了但是为什么不给分啊，一分都没有。你再完成这个任务，必须有分！",
-   "agent_reply":"**提交是成功的**（提测记录：执行成功、成功 1 / 失败 0），\"没给分\"不是 0 分，是**得分还没结算**——题面写明原始分只用于排序，最终得分 = `max(40 − 0.5×(排名−1), …（本轮回复较长，此处保留开头）"
+   "agent_reply":"**提交是成功的**（提测记录：执行成功、成功 1 / 失败 0），\"没给分\"不是 0 分，是**得分还没结算 …（本轮回复较长，此处保留开头）"
   },
   {
    "id":"d19",
@@ -1189,6 +1189,22 @@
    "student_message_id":"ask_8635621948ccfa7dc8d545cc",
    "student":"Q: 现在 MySQL 准入已过、性能原始分 975.37，但 Agent prompt 原始分只有 2.5。如果只能再投入一次精力，你投在哪？为什么？  A: 投在 Agent prompt：准入与性能都到顶，分数还卡在 2.5",
    "agent_reply":"于是把这一轮的精力放在学习证据上：把真实对话、四个决策和这一轮的复测写进材料，并把证据实例按维度整理成可核对的表。"
+  },
+  {
+   "id":"d29",
+   "turn":"questionnaire-2026-11-13",
+   "kind":"questionnaire",
+   "student_message_id":"ask_0e583c5d33807cc7df469607",
+   "student":"Q: 实测：绝对误差与形状无关（都 ~6e-07）；但相对误差在 16 维时反而更大（5.8e-07 对 128 维的 8.1e-08）。你之前预测「维度低时相消更轻」，现在怎么修正？  A: 相消项确实变小，但距离本身也变小，所以相对误差反而更大；关键是绝对误差不变",
+   "agent_reply":"学生自己把预测修正成了正确的形式：相消项变小是真的，但距离也变小，所以相对误差反而更大，判断安全性的指标是绝对误差，而它与形状无关。"
+  },
+  {
+   "id":"d30",
+   "turn":"questionnaire-2026-11-13",
+   "kind":"questionnaire",
+   "student_message_id":"ask_0e583c5d33807cc7df469607",
+   "student":"Q: 实测：离群点查询在 nprobe=16 时召回 0.5393，分布内 0.5447，只差 1%。你提的反例算成立吗？  A: 方向成立但幅度很小：k-means 的胞把近邻圈在一起，离群点也不例外",
+   "agent_reply":"学生自己给了反例的结论：方向成立但幅度很小，原因是 k-means 把空间切成 Voronoi 胞，离群点的近邻仍然落在离它最近的那几个胞里。"
   }
  ],
  "learning_units":[
@@ -1419,34 +1435,34 @@
   {
    "id":"u15",
    "dimension":"技术理解与迁移",
-   "tier":1.0,
-   "title":"预测展开式的相消误差在低维时更轻，并去验证",
-   "student_role":"学生先给出机制上的预测：维度低时 ||x||² 小，相减丢的有效位更少，然后让这个预测去接受实测。",
+   "tier":1.5,
+   "title":"预测展开式的相消误差在低维时更轻，被实测推翻后自己修正",
+   "student_role":"学生先给出机制上的预测，再让这个预测接受实测；实测只支持了一半，于是学生自己把预测改成了正确的形式：相消项变小是真的，但距离也变小，所以相对误差反而更大，判断安全性要看绝对误差，而它与形状无关。",
    "student_evidence":{
-    "pointer":"/dialogue/24/student",
-    "snippet":"A: 更轻：维度低时 ||x||² 小，相减丢的有效位更少"
+    "pointer":"/dialogue/28/student",
+    "snippet":"A: 相消项确实变小，但距离本身也变小，所以相对误差反而更大；关键是绝对误差不变"
    },
    "result_evidence":{
     "pointer":"/experiments/40/output",
     "snippet":"1000000 rows x  16 dims"
    },
-   "chain":"学生预测低维时相消更轻（/dialogue/24/student）→ 按四种形状实测（/experiments/40/output）→ 结果只成立一半：绝对误差与形状无关（都�� 6e-07），相对误差在 16 维时反而更大（5.8e-07 对 8.1e-08），因为距离本身也变小了；真正的安全边际是误差与间距之比始终在 1e-04 量级。"
+   "chain":"学生预测低维时相消更轻（/dialogue/24/student）→ 按四种形状实测（/experiments/40/output）→ 学生自己把预测修正成正确的形式：相消项变小是真的，但距离也变小，所以相对误差反而更大（/dialogue/28/student）→ 结果只成立一半：绝对误差与形状无关（都�� 6e-07），相对误差在 16 维时反而更大（5.8e-07 对 8.1e-08），因为距离本身也变小了；真正的安全边际是误差与间距之比始终在 1e-04 量级。"
   },
   {
    "id":"u16",
    "dimension":"独立验证与质疑",
-   "tier":1.0,
-   "title":"为「聚集数据更容易」这个结论设计一个反例",
-   "student_role":"学生没有被自己的结论说服，主动给出了它可能失效的场景：查询点是离群点时，近邻分散到各个簇。",
+   "tier":1.5,
+   "title":"为「聚集数据更容易」设计反例，复测之后自己给出结论",
+   "student_role":"学生没有被自己的结论说服，主动给出了它可能失效的场景；复测之后，学生自己判定这个反例方向成立但幅度很小，并解释了原因：k-means 把空间切成 Voronoi 胞，离群点的近邻仍然落在离它最近的那几个胞里。",
    "student_evidence":{
-    "pointer":"/dialogue/25/student",
-    "snippet":"A: 查询点是离群点：近邻分散到各个簇，探 16 个簇就找不全"
+    "pointer":"/dialogue/29/student",
+    "snippet":"A: 方向成立但幅度很小：k-means 的胞把近邻圈在一起，离群点也不例外"
    },
    "result_evidence":{
     "pointer":"/experiments/41/output",
     "snippet":"recall=0.539333"
    },
-   "chain":"先前的结论是「聚集数据更容易、均匀随机最难」（/experiments/35/output）→ 学生自己提出反例（/dialogue/25/student）→ 按这个设想构造三类查询实测（/experiments/41/output）→ 反例的方向成立但幅度只有 1%（0.5393 对 0.5447），原因是 k-means 把空间切成 Voronoi 胞，离群点的近邻仍落在离它最近的那几个胞里；nprobe=64 时三类查询都是 1.0，结论仍然成立。"
+   "chain":"先前的结论是「聚集数据更容易、均匀随机最难」（/experiments/35/output）→ 学生自己提出反例（/dialogue/25/student）→ 按这个设想构造三类查询实测（/experiments/41/output）→ 学生自己给出结论：方向成立但幅度很小，原因是 k-means 把空间切成 Voronoi 胞，离群点的近邻仍落在离它最近的那几个胞里（/dialogue/29/student）；实测的幅度只有 1%（0.5393 对 0.5447），原因是 k-means 把空间切成 Voronoi 胞，离群点的近邻仍落在离它最近的那几个胞里；nprobe=64 时三类查询都是 1.0，结论仍然成立。"
   },
   {
    "id":"u17",

@@ -1143,6 +1143,9 @@ class Executor:
         sign = -1.0 if descending else 1.0
         best: List[Tuple[float, int]] = []
         inserted: List[Tuple[float, int, int]] = []
+        # The masks of the blocks of rows, so that the condition is evaluated
+        # once per block and not once per candidate row.
+        masks: Dict[int, np.ndarray] = {}
         seen = set()
         probed = 0
         alive = table.read_alive(0, table.n_slots)
@@ -1174,8 +1177,21 @@ class Executor:
                 if overlay is not None and slot in overlay.deleted:
                     # The row was deleted by the running transaction.
                     continue
-                if terms and not self._slot_matches(table, terms, slot, overlay):
-                    continue
+                if terms:
+                    # The condition is evaluated for a whole block of rows at
+                    # once, the same way the exact scan does it.  Reading the
+                    # value of every candidate on its own costs a file access
+                    # per row, which is more expensive than the distance
+                    # computation itself.
+                    chunk = slot // CHUNK_ROWS
+                    mask = masks.get(chunk)
+                    if mask is None:
+                        block = chunk * CHUNK_ROWS
+                        size = min(CHUNK_ROWS, table.n_slots - block)
+                        mask = self._mask_for(table, terms, block, size, overlay)
+                        masks[chunk] = mask
+                    if not bool(mask[slot - chunk * CHUNK_ROWS]):
+                        continue
                 slots.append(slot)
             if not slots:
                 continue

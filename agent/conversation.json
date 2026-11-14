@@ -473,6 +473,14 @@
    "command":"python experiments/bench_selection_scaling.py",
    "conclusion":"K=10 快 19.06 倍，K=100 快 16.23 倍，K=1000 快 8.54 倍，K=4096 只快 2.02 倍，K=8192（整块）反而比完整排序慢（0.548 ms 对 0.483 ms）。交叉点在块大小的一半，和学生的判断一致：这个改动只在小 K 时成立。",
    "output":"chunk of 8192 rows\n  K=   10  complete sort 0.498 ms   selection 0.026 ms   factor 19.06\n  K=  100  complete sort 0.485 ms   selection 0.030 ms   factor 16.23\n  K= 1000  complete sort 0.482 ms   selection 0.056 ms   factor 8.54\n  K= 4096  complete sort 0.482 ms   selection 0.239 ms   factor 2.02\n  K= 8192  complete sort 0.483 ms   selection 0.548 ms   factor 0.88\n"
+  },
+  {
+   "id":"e48",
+   "question":"上一次提测的 MySQL 正式用例未通过（失败用例数 1），是哪一条？",
+   "method":"把失败的那一轮与上一次通过的版本逐行对比功能代码，只有两处改动：查询的部分选择，与向量字面量的解析。逐条复现两者的边界行为，发现『ORDER BY 之后 LIMIT 0』在部分选择里会对空数组取最大值而抛出异常；用有缺陷的镜像跑本地自造用例，sql_limit_forms 立刻失败，说明本地套件能抓到它。",
+   "command":"python experiments/regress_limit_zero.py",
+   "conclusion":"回归的原因是 LIMIT 0：选择器被要求选出零行，随后对空数组取最大值而抛异常；没有 ORDER BY 的查询走的是另一条路径，所以只有带排序的写法会踩到。修好之后，官方 20 个用例与自造 18 个用例全部通过，219 个单元测试通过。",
+   "output":"== 复现：ORDER BY 之后 LIMIT 0 ==\n修改前：EXCEPTION ValueError zero-size array to reduction operation maximum which has no identity\n修改后：[]\n\n== 用有缺陷的镜像跑本地自造用例 ==\nsql_null: PASS\nsql_join: PASS\nsql_aggregate: PASS\nsql_subquery: PASS\nsql_foreign_key: PASS\nsql_nested_transaction: PASS\nsql_update_primary_key: PASS\nsql_limit_forms: FAIL line 5: SELECT id FROM docs ORDER BY id LIMIT 0;: statement failed:\n  {'id': 5, 'ok': False, 'error': {'code': 'execution_error',\n  'message': 'zero-size array to reduction operation maximum which has no identity'}}\nsql_select_star: PASS\nsql_insert_column_list: PASS\nsql_table_primary_key: PASS\nsql_string_order: PASS\nsql_string_compare: PASS\nsql_case_insensitive: PASS\nsql_vector_projection: PASS\ntransaction_visibility: PASS\ntransaction_vector_visibility: PASS\ntransaction_commit_visibility: PASS\n\n== 修好之后 ===\n官方 protocol_check：20/20 PASS\n本地自造用例：18/18 PASS\n单元测试：Ran 219 tests OK\n"
   }
  ],
  "retrospective":[
@@ -531,6 +539,10 @@
   {
    "id":"r13",
    "content":"这一轮最有用的一次动作不是写代码，而是复现：把题面要求的“数据量超过内存限额”按最坏的样子跑了一遍——每行的文本都不同，让字典没有任何可折叠的条目。结果 5000 行就撞到 2 GiB 上限、进程被杀。如果只按“官方场景里所有行的取值相…"
+  },
+  {
+   "id":"r15",
+   "content":"这一轮最该记住的不是那个 bug，是验收流程把它藏起来了：本地自造用例里有『ORDER BY 之后 LIMIT 0』，用有缺陷的镜像跑它是失败的；但验收时只读了检查器输出的截断视图（只看最后几行），又去读了上一轮的报告文件，于是把一次失败当成了通过。现在验收脚本把检查器的完整输出写进文件，并把报告里每一条用例都列出来，不通过的就单独打出来。"
   }
  ],
  "limitations":[
@@ -1142,6 +1154,14 @@
    "student_message_id":"ask_4532ad58aa79dd75700753b9",
    "student":"Q: 我把排序从「整块 8192 行全排」改成「只排可能进前 K 的行」，快 25 倍。如果要返回前 1000 行而不是前 10 行，这个改动还成立吗？为什么？  A: 不成立：K 大了以后候选集接近整块，省下的排序就少了",
    "agent_reply":"把这个判断做成了实测：K 从 10 涨到 8192，收益从 19 倍一路降到 0.88 倍，交叉点就在块大小的一半。"
+  },
+  {
+   "id":"d34",
+   "turn":"2026-11-14",
+   "kind":"message",
+   "student_message_id":"msg-user-v1-failed-round-20261114",
+   "student":"我用最新的重新执行了一次，最后结果是这样。认真完成。不要退步。",
+   "agent_reply":"结果是 MySQL 正式用例未通过，失败用例数 1，原因『功能结果不符合』，性能和 Agent prompt 两项都因为正确性门槛未通过而没有分数。查下来是自己上一个提交引入的回归：ORDER BY 之后 LIMIT 0 的查询。"
   }
  ],
  "learning_units":[

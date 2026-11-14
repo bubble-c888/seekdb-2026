@@ -53,18 +53,23 @@ def parse_vector_literal(text: str, dim: Optional[int] = None) -> np.ndarray:
     if not values:
         raise DataError("vector literal must not be empty")
     try:
-        numbers = np.asarray(values, dtype=np.float64)
+        # The values are converted straight into float32: a value that does not
+        # fit becomes infinite, and the slow path below tells the two cases
+        # apart.  Converting to float64 first would copy the whole literal a
+        # second time, and the literal is parsed once per inserted row.
+        with np.errstate(over="ignore"):
+            array = np.asarray(values, dtype=np.float32)
     except (TypeError, ValueError):
         raise DataError(f"invalid vector literal: {text}") from None
-    if numbers.ndim != 1:
+    if array.ndim != 1:
         raise DataError(f"invalid vector literal: {text}")
-    if not np.all(np.isfinite(numbers)):
-        raise DataError("vector values must be finite")
-    if np.any(np.abs(numbers) > FLOAT32_MAX):
-        raise DataError("vector value overflows float32")
-    array = numbers.astype(np.float32)
     if not np.all(np.isfinite(array)):
-        raise DataError("vector value overflows float32")
+        exact = np.asarray(values, dtype=np.float64)
+        if not np.all(np.isfinite(exact)):
+            raise DataError("vector values must be finite")
+        if np.any(np.abs(exact) > FLOAT32_MAX):
+            raise DataError("vector value overflows float32")
+        raise DataError(f"invalid vector literal: {text}")
     return array
 
 

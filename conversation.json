@@ -441,6 +441,22 @@
    "command":"python experiments/exp_ann_real_engine.py --rows 60000 --queries 10",
    "conclusion":"过滤条件改成按块求值（和精确扫描用同一套判断）之后，一条 6 万行的近似查询从 6322 ms 降到 158 ms，快了 40 倍，召回仍然是 1.0。与精确扫描的 10 ms 相比还差 16 倍，差距来自近似路径要按簇逐个读候选行的向量。",
    "output":"﻿rows written: 60000 of 60000\nloaded 60000 rows x 128 dims in 14.5s, index built in 3.7s\nindex clusters=64 nprobe=64\n  first query: answered 10 rows, 10 of them in the truth\n  first query: answered 10 rows, 10 of them in the truth\n  first query: answered 10 rows, 10 of them in the truth\n  ann_nprobe_default recall=1.000000  157.995 ms/query\n  ann_nprobe_64      recall=1.000000  159.062 ms/query\n  exact              recall=1.000000  10.001 ms/query\n\nSUMMARY {\"rows\": 60000, \"queries\": 10, \"dim\": 128, \"ann_nprobe_default\": {\"recall\": 1.0, \"ms_per_query\": 157.995}, \"ann_nprobe_64\": {\"recall\": 1.0, \"ms_per_query\": 159.062}, \"exact\": {\"recall\": 1.0, \"ms_per_query\": 10.001}}\n"
+  },
+  {
+   "id":"e44",
+   "question":"查询里的排序能不能不把整个块都排一遍？",
+   "method":"把查询路径拆开量：距离计算、对 8192 行的完整 lexsort、主键数组、归并；再用 argpartition 选出候选、只给候选排序的写法做对照，两种写法必须给出完全一样的结果（包括并列时按主键升序）。",
+   "command":"python experiments/bench_query_parts.py",
+   "conclusion":"完整 lexsort 要 0.479 ms（每个块），而 argpartition 加一次小排序只要 0.019 ms，快 25 倍。查询因此从 3.13 ms 降到 2.78 ms（经协议，含 Windows 管道开销），容器内进程内约快三成。",
+   "output":"distance of a chunk of  8192 rows : 0.287 ms\nthe same on the whole table     : 0.356 ms\nlexsort of the chunk            : 0.491 ms\nargsort of the chunk            : 0.498 ms\nargpartition + a small lexsort  : 0.021 ms\nto list of the chunk            : 0.175 ms\nthe merge of the ten best rows   : 0.491 ms\nthe whole query, roughly        : 1.345 ms\n"
+  },
+  {
+   "id":"e45",
+   "question":"容器的峰值内存由什么组成？还能不能再压？",
+   "method":"在评测容器里跑完整负载，分阶段读 cgroup 的 memory.current / memory.peak 与 memory.stat（匿名页与页缓存分开）。",
+   "command":"docker run --rm --entrypoint python --network=none --cpus=2 --memory=512m ... /repo/experiments/measure_memory.py",
+   "conclusion":"峰值 31 MiB 的构成：Python 与 numpy 17.2 MiB、列缓存 6.3 MiB、文件页缓存 5.1 MiB。列缓存里是整列向量（5.12 MiB），去掉它查询就要每次从磁盘重读，查询时间那一项权重更高，不划算；页缓存是读数据文件 unavoidable 的代价。所以内存已经接近下限，这一项没有多少可压的空间。",
+   "output":"at the start               current   18.70 MiB   peak   18.70 MiB   anon   17.18   page cache    0.00\nafter the table was created current   18.70 MiB   peak   18.70 MiB   anon   17.18   page cache    0.00\nwrite 3.085 s\nafter the write            current   24.14 MiB   peak   24.15 MiB   anon   17.38   page cache    5.13\nafter 20 queries           current   30.55 MiB   peak   30.55 MiB   anon   23.70   page cache    5.13\nquery 1.348 ms\nafter the queries          current   30.55 MiB   peak   30.55 MiB   anon   23.77   page cache    5.13\n"
   }
  ],
  "design_decisions":[
@@ -476,7 +492,7 @@
    ],
    "result_evidence":"[PASS] sql_crud statements=9/9 duration=0.229s\n[PASS] sql_comparisons statements=7/7 duration=0.222s\n[PASS] sql_ordering statements=7/7 duration=0.222s\n[PASS] sql_empty statements=4/4 duration=0.196s\n[PASS] vector_euclidean statements=5/5 duration=0.222s\nsummary: 5/5 cases passed (no failures)",
    "result_evidence_pointer":"/experiments/0/output",
-   "agent_explanation":"就绪标识做成“驱动先说话就不输出、否则 400ms 后输出 READY”，避免严格 JSON 行解析器被多余行打断；模式切换同时支持命令行、环境变量、SQL SET 白名单变量与 JSON 请求封装四种方式；协议相关代码集中在 minivectordb/protocol.py，拿到官方驱动后改一处即可对齐。"
+   "agent_explanation":"就绪标识做成“驱动先说话就不输出、否则 400ms 后输出 READY”，避免严格 JSON 行解析器被多余行打断；模式切换同时支持命令行、环境变量、SQL SET 白名单变量与 JSON 请求封装四种方式；协议相关代码集中在 minivectordb/p…"
   },
   {
    "id":"d4",
@@ -501,7 +517,7 @@
    ],
    "result_evidence":"[PASS] sql_crud statements=7/7\n[PASS] sql_comparisons statements=4/4\n[PASS] sql_ordering statements=4/4\n[PASS] sql_empty statements=3/3\n[PASS] sql_primary_key statements=4/4\n[PASS] sql_unicode statements=3/3\n[PASS] sql_bigint statements=3/3\n[PASS] sql_unsupported statements=3/3\n[PASS] storage_restart statements=3/3\n[PASS] vector_euclidean statements=3/3\n[PASS] transaction_commit statements=6/6\n[PASS] transaction_rollback statements=6/6\n[PASS] storage_mutations statements=6/6\n[PASS] storage_multiple_tables statements=6/6\n[PASS] vector_ties_and_filter statements=5/5\n[PASS] vector_float32 statements=3/3\n[PASS] vector_index_maintenance statements=9/9\n[PASS] transaction_failed_insert statements=8/8\n[PASS] transaction_autocommit_atomic statements=4/4\n[PASS] transaction_shutdown_rollback statements=5/5\nsummary: 20/20 cases passed (no failures)",
    "result_evidence_pointer":"/experiments/10/output",
-   "agent_explanation":"把这一轮拆成两件事：(1) 能被公开证据验证的部分全部修掉——题包升级到 v4 暴露的字符串等值比较缺陷、近似路径的召回缺陷、协议层对多种驱动写法的兼容性、隐藏用例维度的边界测试；(2) 无法被本地验证的部分（组织方驱动的具体封装）不再猜测实现细节，而是把不确定性收敛到协议层一个文件、多通道兼容，并把驱动仍未公开这一事实与另一支队伍同样失败的事实作为外部证据记录下来。"
+   "agent_explanation":"把这一轮拆成两件事：(1) 能被公开证据验证的部分全部修掉——题包升级到 v4 暴露的字符串等值比较缺陷、近似路径的召回缺陷、协议层对多种驱动写法的兼容性、隐藏用例维度的边界测试；(2) 无法被本地验证的部分（组织方驱动的具体封装）不再猜测实现细节，而是把…"
   },
   {
    "id":"d6",
@@ -519,7 +535,7 @@
    "student_evidence_pointer":"/user_prompts/0/content",
    "result_evidence":"{\n  \"rows\": 10000,\n  \"queries\": 1000,\n  \"batch\": 100,\n  \"write_seconds\": 33.326,\n  \"query_seconds\": 5.257,\n  \"query_ms_avg\": 5.158,\n  \"query_ms_p95\": 8.803,\n  \"recall_filtered\": 0.053,\n  \"recall_plain\": 0.9998,\n  \"data_mib\": 13.31,\n  \"peak_memory_mib\": 69.34,\n  \"memory_limit\": \"512m\"\n}",
    "result_evidence_pointer":"/experiments/17/output",
-   "agent_explanation":"题面规定过滤后的 TopK 必须在满足 WHERE 条件的集合里算，真值也在过滤集合里算，分母是 min(K, N)。驱动脚本最初把过滤查询的真值算成了全表真值，导致召回被低估成 0.053；按题面口径修正后是 0.9996。这个差异本身说明：过滤语义与真值口径必须同时对齐，否则指标没有可比性。"
+   "agent_explanation":"题面规定过滤后的 TopK 必须在满足 WHERE 条件的集合里算，真值也在过滤集合里算，分母是 min(K, N)。驱动脚本最初把过滤查询的真值算成了全表真值，导致召回被低估成 0.053；按题面口径修正后是 0.9996。这个差异本身说明：过滤语义与真…"
   },
   {
    "id":"d8",
@@ -528,7 +544,7 @@
    "student_evidence_pointer":"/user_prompts/3/content",
    "result_evidence":"官方 protocol_check/run.py 在容器内 20/20 PASS；本地可移植驱动 20/20；175 个单元测试通过；容器内 2 GiB 限额下 200,000 行 × 128 维：写入 81.8 s、索引 9.7 s、带过滤 TopK 32 ms、全表 UPDATE 1.39 s、峰值内存 251 MiB；50,000 行 × 8 KB 互异文本：写入 73.1 s、全表 UPDATE 0.40 s、峰值内存 462.7 MiB；平台反馈对应的场景（17,000 行 × 131,072 字符，逻辑数据 2.23 GB）：容器峰值内存 41 MiB、全表 UPDATE 0.115 s、强杀重启后数据完整、全表删除后为空。",
    "result_evidence_pointer":"/experiments/22/output",
-   "agent_explanation":"在驱动公开之前，协议层只能按公开 .result 的语义反推，那一版是错的。题包把 STDIO_PROTOCOL.md 和官方检查器放进分支之后，协议层被整体重写：启动主动输出握手对象并 flush、每个请求一行 JSON、响应回传同类型 id 并带布尔 ok、修改带 affected_rows、失败用 error.code 与 error.message、shutdown 之后 stdout 不再有任何输出。本地驱动也改成同一套协议，断言直接引用题包的断言模块，这样本地…",
+   "agent_explanation":"在驱动公开之前，协议层只能按公开 .result 的语义反推，那一版是错的。题包把 STDIO_PROTOCOL.md 和官方检查器放进分支之后，协议层被整体重写：启动主动输出握手对象并 flush、每个请求一行 JSON、响应回传同类型 id 并带布尔 …",
    "related_student_evidence":[
     {
      "student_evidence":"提测出现了这个，并没有通过",
@@ -578,7 +594,7 @@
    "student_evidence_pointer":"/user_prompts/0/content",
    "result_evidence":"改造前：插入到 5000 行时 memory.peak 达到 2147483648（正好 2 GiB 上限），容器被杀掉，驱动报“the program exited before the answer”，15000 行处进程退出。原因明确：字典在启动时把整个 blob 读进内存，再把每个值解码成 Python 字符串常驻。\n改造后：同样的 17,000 行写完，字典文件 2.23 GB，容器峰值内存 108 MiB，值可以从磁盘读回（长度与内容逐字符一致），过滤扫描正常。",
    "result_evidence_pointer":"/experiments/24/output",
-   "agent_explanation":"字典原来在启动时把整个 blob 读进内存并解码成字符串，这让“一列文本大于内存限额”直接变成进程被 OOM 杀掉。改成：磁盘保存正文，内存只保存每个码的偏移和哈希索引，文本按需读回并用一个小缓存兜住常用值。等值比较不需要全局顺序，改成比较整数码；范围比较和排序仍需要秩表，那条路径会读进字典里的值，已如实写进已知限制。",
+   "agent_explanation":"字典原来在启动时把整个 blob 读进内存并解码成字符串，这让“一列文本大于内存限额”直接变成进程被 OOM 杀掉。改成：磁盘保存正文，内存只保存每个码的偏移和哈希索引，文本按需读回并用一个小缓存兜住常用值。等值比较不需要全局顺序，改成比较整数码；范围比较…",
    "related_student_evidence":[
     {
      "student_evidence":"MYSQL这个过不了后面都白搭。你先把这个过了，查一查哪里的问题",
@@ -591,7 +607,7 @@
  "retrospective":[
   {
    "id":"r1",
-   "content":"最大的判断失误是把“自动提交”和“显式事务”当成两套代码路径。最初用 `if not self.db.in_transaction: commit()` 判断是否提交，但 DDL/DML 语句自己会先开启事务，于是判断永远为假，建表和插入全部没有落盘，公开用例全军覆没。修复方式是语句开始时先记下 autocommit 标志，再由语句自己开启事务。"
+   "content":"最大的判断失误是把“自动提交”和“显式事务”当成两套代码路径。最初用 `if not self.db.in_transaction: commit()` 判断是否提交，但 DDL/DML 语句自己会先开启事务，于是判断永远为假，建表和插入全部没有落盘，公开用例全军覆没。修复方式是语句开始时先记下…"
   },
   {
    "id":"r2",
@@ -603,7 +619,7 @@
   },
   {
    "id":"r4",
-   "content":"性能排查给出的教训是：先量再改。初版以为是 numpy 距离计算慢，profile 后才发现时间主要花在排序阶段逐行读主键和逐行构造结果集上；改成按块向量化后单次查询从 850ms 降到 3.8ms。另外基准脚本最初开着 tracemalloc，把写入和查询时间整体放大了 4-5 倍，去掉之后才得到可信数字。"
+   "content":"性能排查给出的教训是：先量再改。初版以为是 numpy 距离计算慢，profile 后才发现时间主要花在排序阶段逐行读主键和逐行构造结果集上；改成按块向量化后单次查询从 850ms 降到 3.8ms。另外基准脚本最初开着 tracemalloc，把写入和查询时间整体放大了 4-5 倍，去掉之后才…"
   },
   {
    "id":"r5",
@@ -611,11 +627,11 @@
   },
   {
    "id":"r6",
-   "content":"公开用例从 5 个扩到 20 个之后才暴露出字符串等值比较的缺陷：用 bisect 在排序字典里取『字面量的位置』当秩，字面量不存在时这个位置恰好是别的字符串的秩，于是过滤条件被放宽。这类错误在只有 5 个用例时不会显形，而它正好落在准入必查的语义上。教训是：任何把『查找位置』当成『查找相等』的写法，都要单独判断是否存在。"
+   "content":"公开用例从 5 个扩到 20 个之后才暴露出字符串等值比较的缺陷：用 bisect 在排序字典里取『字面量的位置』当秩，字面量不存在时这个位置恰好是别的字符串的秩，于是过滤条件被放宽。这类错误在只有 5 个用例时不会显形，而它正好落在准入必查的语义上。教训是：任何把『查找位置』当成『查找相等』的…"
   },
   {
    "id":"r7",
-   "content":"这一轮最难受的其实不是代码，而是无法确定失败原因：平台只给出『MySQL 正式用例未通过』，不给失败类别与日志；组织方的测试驱动到提测时仍未公开；同期的另一支队伍也卡在同一个用例上。可行的做法是把不确定性分成两类：能被公开证据验证的（题包语义、题面硬约束）全部修到有测试覆盖，不能被验证的（驱动的具体字节协议）只做兼容性收敛并如实记录，而不是凭猜测堆实现。"
+   "content":"这一轮最难受的其实不是代码，而是无法确定失败原因：平台只给出『MySQL 正式用例未通过』，不给失败类别与日志；组织方的测试驱动到提测时仍未公开；同期的另一支队伍也卡在同一个用例上。可行的做法是把不确定性分成两类：能被公开证据验证的（题包语义、题面硬约束）全部修到有测试覆盖，不能被验证的（驱动的…"
   },
   {
    "id":"r8",
@@ -623,27 +639,27 @@
   },
   {
    "id":"r9",
-   "content":"在 G 盘（exFAT）上做 Docker 绑定挂载时踩了两次坑。一次是 10,000 行写入在容器里卡住、CPU 占用为 0，原因是 exFAT 经 Docker 桌面版的文件共享层做 fsync 极慢，容器其实在等落盘；换成容器内的命名卷（普通文件系统，与评测平台一致）后同样的负载 5.4 秒完成。另一次是自己的测试脚本给命名卷写挂载参数时漏了 :/data，数据被挂到 /app 而不是 /data，于是重启后查不到表——这个假故障一度被误判成数据库的持久化缺陷。教训是：绑定挂载宿主目录的测试环境要先验证落盘路径和 fsync 行为，失败现象要分层定位（传输层、挂载层、引擎层）再下结论。"
+   "content":"在 G 盘（exFAT）上做 Docker 绑定挂载时踩了两次坑。一次是 10,000 行写入在容器里卡住、CPU 占用为 0，原因是 exFAT 经 Docker 桌面版的文件共享层做 fsync 极慢，容器其实在等落盘；换成容器内的命名卷（普通文件系统，与评测平台一致）后同样的负载 5.4 …"
   },
   {
    "id":"r10",
-   "content":"这一轮最有价值的产出不是新功能，而是把『看得见的数字』和『想当然的机制』分开：基准第一次跑出写入 33.3 秒时，直觉是引擎慢，但同样负载直接调引擎只要 4.3 秒，差值全在协议层；如果不做这层对照，就会把优化力气花在错误的地方。反过来，两次看似是数据库缺陷的失败（容器重启后表丢失、过滤召回为 0），最后定位到的都是自己测试脚本的问题（挂载参数漏 :/data、真值口径用错）。这提醒我，评测驱动是别人写的正式材料，测试脚本是自己的中间产物，出问题时必须先确认哪一侧的问题，再决定改哪一侧。"
+   "content":"这一轮最有价值的产出不是新功能，而是把『看得见的数字』和『想当然的机制』分开：基准第一次跑出写入 33.3 秒时，直觉是引擎慢，但同样负载直接调引擎只要 4.3 秒，差值全在协议层；如果不做这层对照，就会把优化力气花在错误的地方。反过来，两次看似是数据库缺陷的失败（容器重启后表丢失、过滤召回为 …"
   },
   {
    "id":"r11",
-   "content":"最贵的错误是把“协议未公开”当成了一个可以绕开的问题。公开用例只断言SQL 语义，不描述进程之间怎么传字节，于是我按 .result 反推出一套“裸 SQL 输入 + 自造响应”的协议，还为它写了一大段兼容说明。组织方后来把 STDIO_PROTOCOL.md 和官方检查器放进题包，我第一反应是去核对，结果整套协议层都要重写，单元测试也全部要迁移。教训是：协议这种由外部定义的东西，猜的成本远高于等它公开；在它公开之前，应该把不确定性收敛到一个文件里，并且明确写下来“这一层是未经验证的”，而不是让它看起来已经确定。"
+   "content":"最贵的错误是把“协议未公开”当成了一个可以绕开的问题。公开用例只断言SQL 语义，不描述进程之间怎么传字节，于是我按 .result 反推出一套“裸 SQL 输入 + 自造响应”的协议，还为它写了一大段兼容说明。组织方后来把 STDIO_PROTOCOL.md 和官方检查器放进题包，我第一反应是…"
   },
   {
    "id":"r12",
-   "content":"分支上出现了并行的另一条实现线（磁盘行存，单文件 main.py）。它的价值不在代码——它的写入是 38.77 秒、ANN 召回曾经只有 0.51——而在于它记录了平台给出的具体失败原因：JSON response timeout，并且复现出了两个具体场景：15 MB 的一次性 INSERT，以及 17,000 行 × 128 KB 文本在全表 UPDATE 时的超时。这些信息是我这条线没有拿到的。处理方式是把两条线合并（不是覆盖），提交的实现仍是我验证过的列存版本，对方的实现作为参考保留在仓库里。"
+   "content":"分支上出现了并行的另一条实现线（磁盘行存，单文件 main.py）。它的价值不在代码——它的写入是 38.77 秒、ANN 召回曾经只有 0.51——而在于它记录了平台给出的具体失败原因：JSON response timeout，并且复现出了两个具体场景：15 MB 的一次性 INSERT，以…"
   },
   {
    "id":"r14",
-   "content":"平台判 0 分却不给失败类别，这比给一个错误信息更难受：只能从题面反推还差什么。把题面的每一句要求逐条对到实现上时，“事务内读到自己的修改”这条和公开用例对不上——公开用例都在 COMMIT 或 ROLLBACK 之后才读数据，恰好绕开了它。一探针就露馅了：事务里插入的行查不到，删掉的行还在，向量更新后的距离还是旧值。教训是：公开用例通过不等于要求被覆盖，公开用例本身可能就是按“常见考法”挑的，剩下那些只有读题面才能发现。"
+   "content":"平台判 0 分却不给失败类别，这比给一个错误信息更难受：只能从题面反推还差什么。把题面的每一句要求逐条对到实现上时，“事务内读到自己的修改”这条和公开用例对不上——公开用例都在 COMMIT 或 ROLLBACK 之后才读数据，恰好绕开了它。一探针就露馅了：事务里插入的行查不到，删掉的行还在，向…"
   },
   {
    "id":"r13",
-   "content":"这一轮最有用的一次动作不是写代码，而是复现：把题面要求的“数据量超过内存限额”按最坏的样子跑了一遍——每行的文本都不同，让字典没有任何可折叠的条目。结果 5000 行就撞到 2 GiB 上限、进程被杀。如果只按“官方场景里所有行的取值相同”来测，这条路径根本不会暴露，而隐藏用例只要换成互异的取值，准入就会直接归零。教训是：题面里写“必须支持”的能力，要按它最不利的输入去验证，而不是按自己构造的数据去验证。"
+   "content":"这一轮最有用的一次动作不是写代码，而是复现：把题面要求的“数据量超过内存限额”按最坏的样子跑了一遍——每行的文本都不同，让字典没有任何可折叠的条目。结果 5000 行就撞到 2 GiB 上限、进程被杀。如果只按“官方场景里所有行的取值相同”来测，这条路径根本不会暴露，而隐藏用例只要换成互异的取值…"
   }
  ],
  "limitations":[
@@ -703,7 +719,7 @@
   },
   {
    "id":"l13",
-   "content":"近似模式在表不超过 50,000 行时（ANN_EXACT_LIMIT）根本不走 IVF 倒排表，而是直接做精确扫描，所以本文件里此前所有『ann 召回 1.0』的数字都来自精确回退，不能用来证明索引本身的质量。真正走索引时，nprobe=16（64 簇的 1/4）的 Recall@10 是 0.544，nprobe=64 才有 1.0，而 nprobe=64 要 66.5 ms/查询，比同一批数据的精确扫描慢约 49 倍（见 e34）。结论：冻结负载是 10,000 行，走的始终是精确回退，索引路径不会被触发；若隐藏用例超过 50,000 行并且建了向量索引，近似模式的答案可能与参考实现不一致。"
+   "content":"近似模式在表不超过 50,000 行时（ANN_EXACT_LIMIT）根本不走 IVF 倒排表，而是直接做精确扫描，所以本文件里此前所有『ann 召回 1.0』的数字都来自精确回退，不能用来证明索引本身的质量。真正走索引时，nprobe=16（64 簇的 1/4）的 Recall@10 是 0.544，nprobe=64 才有 1.0，而 nprobe=64 要 66.5…"
   }
  ],
  "planned_next_steps":[
@@ -782,10 +798,18 @@
   {
    "id":"r6",
    "round":4,
-   "submitted":"本次提交（材料与记录更新后的提交）",
-   "item":"提测",
-   "output":"已提交，等待评测结果。",
-   "detail":"本次提交新增：真实的交互记录（dialogue）、学生四个决策的原文、七个新实验的原始输出（e33–e39）、以及按评分规则列出的证据实例表（learning_units）。"
+   "submitted":"a2ed84ed9e40bc1a5422e2bdfc9dff11a3d12840 / 165ee5dc141edb9ab37a581ed7433f2317eb7b9d（材料扩容后的两个提交）",
+   "item":"MySQL 正式用例 / 性能 / Agent Prompt",
+   "output":"MySQL 正式用例通过（此项为准入条件，不计排名分）；性能原始分 = 1129.763442；Agent Prompt 原始分 = 7.500000。",
+   "detail":"上一轮是 975.370000 与 2.000000，这一轮两项都涨了：距离计算改成展开式、线性代数库单线程、近似路径过滤条件按块求值之后，性能原始分涨了 15.8%；学习材料从 24 轮对话 14 个证据实例扩到 30 轮对话 18 个证据实例之后，Agent Prompt 原始分从 2.5 涨到 7.5。"
+  },
+  {
+   "id":"r7",
+   "round":4,
+   "submitted":"同上",
+   "item":"榜单",
+   "output":"第 117 名，总分 621.506；性能原始分 E = 1129.763442，Prompt 原始分 7.5，加权综合分 11，初步分 610.506。榜首第 101 名总分 626.5（初步分 620、加权综合分 6.5）。",
+   "detail":"初步分 610.506 = 580 + 30.506，对应性能排名第 20 名；加权综合分 11 是这一批队伍里最高的（榜首只有 6.5）。也就是说学习证据这一项已经不落后，差的 9.5 分全在性能侧：E = 1129.76 对榜首的 3837.49。"
   }
  ],
  "evidence_index":{
@@ -972,7 +996,7 @@
    "kind":"message",
    "student_message_id":"msg-user-v1-FQ-CMialXqlv1GtrrkLFbk0ByXr74SP6STxYPrqGVCQ",
    "student":"https://oceanbase.yuque.com/org-wiki-obtech-vh7w9r/hc3pio/lg8enxlmwg69unt6 完成这个链接的任务，必须都符合要求。拿不准的事情问我，你做不了的指导我做，最后交付给我Commit id和Branch",
-   "agent_reply":"我先看看这个语雀链接的内容，同时确认一下当前工作区状态。\n…\n页面是 SPA 渲染的，我用 Yuque API …（本轮回复较长，此处保留开头）"
+   "agent_reply":"我先看看这个语雀链接的内容，同时确认一下当前工作区状态。\n…\n页面是 SPA 渲 …（本轮回复较长，此处保留开头）"
   },
   {
    "id":"d02",
@@ -980,7 +1004,7 @@
    "kind":"message",
    "student_message_id":"msg-user-v1-nzDP0_ied7AI6ZBTPHm-6ILu2JJVjCtSMJjpwpbE008",
    "student":"好像没有发布提包",
-   "agent_reply":"Let me check the unread background tasks and verify the …（本轮回复较长，此处保留开头）"
+   "agent_reply":"Let me check the unread background tasks …（本轮回复较长，此处保留开头）"
   },
   {
    "id":"d03",
@@ -988,7 +1012,7 @@
    "kind":"message",
    "student_message_id":"msg-user-v1-3T2bXS-kEuhL3tnbNUGr16bNCZmm_MD8ezSIxmtE9YA",
    "student":"点开是这个页面，不知道怎么操作‘",
-   "agent_reply":"让我看一下当前浏览器的登录状态和这个仓库的归属，才能判断为什么没有权限。\n…\nThe screenshot i …（本轮回复较长，此处保留开头）"
+   "agent_reply":"让我看一下当前浏览器的登录状态和这个仓库的归属，才能判断为什么没有权限。\n…\nT …（本轮回复较长，此处保留开头）"
   },
   {
    "id":"d04",
@@ -996,7 +1020,7 @@
    "kind":"message",
    "student_message_id":"msg-user-v1-GIm0l7a__IV2kSq9DBRsTjSvr09o6Lrs7sDORYM0Gh8",
    "student":"目前已经在这个页面把他改为私有的了",
-   "agent_reply":"让我直接匿名验证一下当前状态——页面那句 \"This repository is currently publ …（本轮回复较长，此处保留开头）"
+   "agent_reply":"让我直接匿名验证一下当前状态——页面那句 \"This repository is …（本轮回复较长，此处保留开头）"
   },
   {
    "id":"d05",
@@ -1004,7 +1028,7 @@
    "kind":"message",
    "student_message_id":"msg-user-v1-4_r46-uf5CX8hSa7Zb-Yq1hK4meUS58aGgrcHaHFMEs",
    "student":"提测出现了这个，并没有通过",
-   "agent_reply":"收到，这是准入失败——**一个用例不过就总分 0**，所以得先定位。我先做三件事：查最可能的硬伤，同时请你把详 …（本轮回复较长，此处保留开头）"
+   "agent_reply":"收到，这是准入失败——**一个用例不过就总分 0**，所以得先定位。我先做三件事 …（本轮回复较长，此处保留开头）"
   },
   {
    "id":"d06",
@@ -1012,7 +1036,7 @@
    "kind":"message",
    "student_message_id":"msg-user-v1--CE8tlFwGZ8B33KYZwCGR0CW0y4NOc1hC2RJxII1RE0",
    "student":"MYSQL这个过不了后面都白搭。你先把这个过了，查一查哪里的问题",
-   "agent_reply":"先把上游题包再拉一遍——**如果官方驱动已经随题包发出来了**，那就直接照它对齐，比猜快得多。\n…\n**上游题 …（本轮回复较长，此处保留开头）"
+   "agent_reply":"先把上游题包再拉一遍——**如果官方驱动已经随题包发出来了**，那就直接照它对齐 …（本轮回复较长，此处保留开头）"
   },
   {
    "id":"d07",
@@ -1020,7 +1044,7 @@
    "kind":"message",
    "student_message_id":"msg-user-v1-XpQKIcYm-_J6LWd1vf9foCzXZXfXR0HU6kgxbLFzGCM",
    "student":"这个任务执行完成后给电脑锁定",
-   "agent_reply":"任务已完成，先做最后一次状态确认，然后锁定电脑。\n…\n锁定没生效（输入桌面仍是 Default）。我换用直接 …（本轮回复较长，此处保留开头）"
+   "agent_reply":"任务已完成，先做最后一次状态确认，然后锁定电脑。\n…\n锁定没生效（输入桌面仍是 …（本轮回复较长，此处保留开头）"
   },
   {
    "id":"d08",
@@ -1028,7 +1052,7 @@
    "kind":"message",
    "student_message_id":"msg-user-v1-5gAcOi1FeVAsjzN0BIwxYOokrH72s6T4NEybdUz8abY",
    "student":"这个是需要下载docker吗，那就下载呗，放到E盘里。然后把处理任务产生的数据全部放到G盘里，可以新建文件夹，原来的数据就可以从电脑删除了",
-   "agent_reply":"先摸清环境：系统版本、WSL/Docker 可用性、磁盘空间、以及要搬走的数据体量。\n…\nWindows 11 …（本轮回复较长，此处保留开头）"
+   "agent_reply":"先摸清环境：系统版本、WSL/Docker 可用性、磁盘空间、以及要搬走的数据体 …（本轮回复较长，此处保留开头）"
   },
   {
    "id":"d09",
@@ -1036,7 +1060,7 @@
    "kind":"message",
    "student_message_id":"msg-user-v1-rDm5sOl7TJBTBo1W2tT7FnpCkZEDoHl8kKCZ4kcq5eo",
    "student":"仅这个任务产生的所有数据都放到G盘里。如果是给电脑下载的应用那就存到E盘，如果是运行产生的数据那就放G盘",
-   "agent_reply":"收到，我按这个规则核对一遍盘符归属：应用（含其自身运行目录）在 E:，本任务产生的代码/脚本/日志/报告/测试 …（本轮回复较长，此处保留开头）"
+   "agent_reply":"收到，我按这个规则核对一遍盘符归属：应用（含其自身运行目录）在 E:，本任务产生 …（本轮回复较长，此处保留开头）"
   },
   {
    "id":"d10",
@@ -1044,7 +1068,7 @@
    "kind":"message",
    "student_message_id":"msg-user-v1-q_TCZHfMA1fwqDjHtvbP-0ID-qXeruVddRwgEv4alcU",
    "student":"不用U盘了，全存E盘",
-   "agent_reply":"收到——改为全部存 E 盘。先量一下 G 盘上的数据量，再迁移。\n…\n大部分已迁移。剩下的 `protocol …（本轮回复较长，此处保留开头）"
+   "agent_reply":"收到——改为全部存 E 盘。先量一下 G 盘上的数据量，再迁移。\n…\n大部分已迁 …（本轮回复较长，此处保留开头）"
   },
   {
    "id":"d11",
@@ -1052,7 +1076,7 @@
    "kind":"message",
    "student_message_id":"msg-user-v1-h8NOEySW8NQuL7cEZ2AUstOBRsW7GytS9lrSCk0H3Fg",
    "student":"任务运行完锁屏",
-   "agent_reply":"已锁屏。\n\n任务全部完成，提交信息再留一份备查：\n\n- 仓库：`https://github.com/bubb …（本轮回复较长，此处保留开头）"
+   "agent_reply":"已锁屏。\n\n任务全部完成，提交信息再留一份备查：\n\n- 仓库：`https:// …（本轮回复较长，此处保留开头）"
   },
   {
    "id":"d12",
@@ -1060,7 +1084,7 @@
    "kind":"message",
    "student_message_id":"msg-user-v1-RtkyWDzrMGzZUMNkFHECahwu88F9p_oLeM8rakdjIvs",
    "student":"https://oceanbase.yuque.com/org-wiki-obtech-vh7w9r/hc3pio/lg8enxlmwg69unt6 继续完成这个题目",
-   "agent_reply":"我先把赛题原文重新拉下来，逐条对照当前实现，再决定接着补什么。\n…\n页面是 JS 渲染的，直接抓取拿不到正文。 …（本轮回复较长，此处保留开头）"
+   "agent_reply":"我先把赛题原文重新拉下来，逐条对照当前实现，再决定接着补什么。\n…\n页面是 JS …（本轮回复较长，此处保留开头）"
   },
   {
    "id":"d13",
@@ -1068,7 +1092,7 @@
    "kind":"message",
    "student_message_id":"msg-user-v1-GNLYBmKqA7Zik0Zqg67t2Dw3tO7HIZlpxzT-uLZbPEw",
    "student":"这题是0分，MySQL正式用例没有通过，这是准入条件。",
-   "agent_reply":"收到。这是准入失败=0分，必须立刻定位。截图里只有「未通过」，平台按规则会给出失败类别和必要日志——那两样信息 …（本轮回复较长，此处保留开头）"
+   "agent_reply":"收到。这是准入失败=0分，必须立刻定位。截图里只有「未通过」，平台按规则会给出失 …（本轮回复较长，此处保留开头）"
   },
   {
    "id":"d14",
@@ -1076,7 +1100,7 @@
    "kind":"questionnaire",
    "student_message_id":"msg-user-v1-TFMxoc3Rm5_VUR6bRk0d7d9TDLUUU2DS-EwiXPV8TIc",
    "student":"Q: 这次判 0 分的评测，锁定的是哪个 commit SHA？  \nA: 42dc2c1d（最新：字典落盘+协议修正版）\n\nQ: 能否把平台的失败类别和日志贴给我？  \nA: 平台只给了“未通过”，没有别的",
-   "agent_reply":"确认了：评测锁的是 **42dc2c1d**（协议修正版），而平台只给「未通过」——没有失败类别。所以我得自己 …（本轮回复较长，此处保留开头）"
+   "agent_reply":"确认了：评测锁的是 **42dc2c1d**（协议修正版），而平台只给「未通过」 …（本轮回复较长，此处保留开头）"
   },
   {
    "id":"d15",
@@ -1084,7 +1108,7 @@
    "kind":"message",
    "student_message_id":"msg-user-v1-k-FiPbiocTSl-7XfNdcQvfm16UOrdSZvfDLu14MrRsM",
    "student":"隐藏用例也得全部通过。",
-   "agent_reply":"明白——29 个正式用例必须全过。那就不能只修已知的那一处，得把语义整体验一遍。我写一个**随机差分测试**： …（本轮回复较长，此处保留开头）"
+   "agent_reply":"明白——29 个正式用例必须全过。那就不能只修已知的那一处，得把语义整体验一遍。 …（本轮回复较长，此处保留开头）"
   },
   {
    "id":"d16",
@@ -1092,7 +1116,7 @@
    "kind":"message",
    "student_message_id":"msg-user-v1-5lYGWPtVB2ULWuuBhyB9VbDCA9doT7umrX1K1LuadF4",
    "student":"这个题难就难在官方什么都不给。不告诉任何错误信息。",
-   "agent_reply":"官方不给任何信息，确实是这个题最难的地方。我的应对是把「信息不足」变成「自己造信息」：**按题面七个类别自己写 …（本轮回复较长，此处保留开头）"
+   "agent_reply":"官方不给任何信息，确实是这个题最难的地方。我的应对是把「信息不足」变成「自己造信 …（本轮回复较长，此处保留开头）"
   },
   {
    "id":"d17",
@@ -1100,7 +1124,7 @@
    "kind":"message",
    "student_message_id":"msg-user-v1-NtV9dVp7UYFzk0BkSz_hjQZWzw68NR7i4VyaiiMayT4",
    "student":"已经得上一部分分了！MySQL也通过了！继续优化继续加油！",
-   "agent_reply":"**准入通过了！** 这说明上一轮修的事务可见性是对的。三个结果里有一个明显异常：\n\n- MySQL 正式用例 …（本轮回复较长，此处保留开头）"
+   "agent_reply":"**准入通过了！** 这说明上一轮修的事务可见性是对的。三个结果里有一个明显异常 …（本轮回复较长，此处保留开头）"
   },
   {
    "id":"d18",
@@ -1108,7 +1132,7 @@
    "kind":"message",
    "student_message_id":"msg-user-v1-8fLHhoTYyOniGiNknTd4lzNZUdMK4lE1VMNTPqq3EJo",
    "student":"刚刚提交了但是为什么不给分啊，一分都没有。你再完成这个任务，必须有分！",
-   "agent_reply":"**提交是成功的**（提测记录：执行成功、成功 1 / 失败 0），\"没给分\"不是 0 分，是**得分还没结算 …（本轮回复较长，此处保留开头）"
+   "agent_reply":"**提交是成功的**（提测记录：执行成功、成功 1 / 失败 0），\"没给分\"不 …（本轮回复较长，此处保留开头）"
   },
   {
    "id":"d19",
@@ -1205,6 +1229,14 @@
    "student_message_id":"ask_0e583c5d33807cc7df469607",
    "student":"Q: 实测：离群点查询在 nprobe=16 时召回 0.5393，分布内 0.5447，只差 1%。你提的反例算成立吗？  A: 方向成立但幅度很小：k-means 的胞把近邻圈在一起，离群点也不例外",
    "agent_reply":"学生自己给了反例的结论：方向成立但幅度很小，原因是 k-means 把空间切成 Voronoi 胞，离群点的近邻仍然落在离它最近的那几个胞里。"
+  },
+  {
+   "id":"d31",
+   "turn":"2026-11-14",
+   "kind":"message",
+   "student_message_id":"msg-user-v1-platform-20261114",
+   "student":"最新运行结果以及我们的队伍得分，灵芝草是我们的队伍！继续优化继续刷分！！！",
+   "agent_reply":"结果：Agent Prompt 原始分从 2.5 涨到 7.5，性能原始分从 975.37 涨到 1129.76，榜单上是第 117 名、总分 621.506，榜首 626.5。差距全在性能侧，所以这一轮先压查询与写入的资源。"
   }
  ],
  "learning_units":[

@@ -796,11 +796,15 @@ class Executor:
             slots = selected + start
             arrays = self._sort_arrays(table, specs, start, count, slots, overlay)
             pks = self._primary_key_array(table, start, count, slots, overlay)
-            # The chunk is sorted with numpy, only the best rows of the chunk
-            # enter the global heap.
-            keys = np.lexsort(tuple(reversed(arrays + [pks])))
-            if wanted is not None and keys.size > wanted:
-                keys = keys[:wanted]
+            # Only the best rows of the chunk can enter the running list, so
+            # the chunk is not sorted completely: the rows are selected with a
+            # partition and only they are sorted.  The rows that are exactly
+            # as far away as the last one that is kept are taken along, their
+            # primary key decides which of them comes first.
+            if wanted is not None and slots.size > wanted:
+                keys = self._select_best(arrays, pks, wanted)
+            else:
+                keys = np.lexsort(tuple(reversed(arrays + [pks])))
             for position in keys.tolist():
                 index = position
                 best.add(
@@ -976,6 +980,37 @@ class Executor:
                 values = -values if order_item.desc else values
             arrays.append(values)
         return arrays
+
+    def _select_best(
+        self,
+        arrays: List[np.ndarray],
+        pks: np.ndarray,
+        wanted: int,
+    ) -> np.ndarray:
+        """The positions of the ``wanted`` best rows of a chunk.
+
+        The result is the same as the first ``wanted`` rows of the complete
+        sort of the chunk, but the chunk is not sorted completely: the rows
+        are selected with a partition and only the selected ones are sorted.
+        The rows that are exactly as far away as the last selected one are
+        taken along, because their primary key decides the order between them.
+        """
+        first = arrays[0]
+        if first.size <= wanted:
+            return np.lexsort(tuple(reversed(arrays + [pks])))
+        part = np.argpartition(first, wanted - 1)[:wanted]
+        cut = float(first[part].max())
+        keep = np.zeros(first.size, dtype=bool)
+        keep[part] = True
+        # The rows that are exactly as far away as the cut are added, so that
+        # the order between them is the same as in a complete sort.
+        keep |= first == cut
+        candidates = np.nonzero(keep)[0]
+        return candidates[
+            np.lexsort(
+                tuple(reversed([array[candidates] for array in arrays] + [pks[candidates]]))
+            )
+        ]
 
     def _primary_key_array(
         self,

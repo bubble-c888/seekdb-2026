@@ -666,14 +666,14 @@ python tools/benchmark.py --mode exact
 | 字段 | 内容 |
 | --- | --- |
 | `meta` | 任务、仓库、语言、盘位与证据口径的说明 |
-| `dialogue` | **真实交互记录**：30 轮对话，学生的发言是原文（其中 12 轮是这轮开发里学生的决策与解读），Agent 的回复是该轮可见正文 |
+| `summary` | **材料摘要**：材料类型、范围、引用方式、脱敏说明与缺失说明（题面 4.4 要求） |
+| `conversations` | **真实交互记录**：34 轮对话，学生的发言是原文，Agent 的回复是该轮可见正文；每条标明来源是学生还是 Agent |
 | `user_prompts` | 学生在问卷里给出的选择（语言、提测仓库、检索模式、工作方式等） |
-| `experiments` | 43 次验证，每次都有方法、命令与**真实跑出来的输出** |
-| `design_decisions` | 12 项设计取舍及其依据 |
-| `retrospective` | 14 条复盘（含判断失误与踩过的坑） |
+| `experiments` | 48 次验证，每次都有方法、命令与**真实跑出来的输出**，来源标为 tool_result |
+| `retrospective` | 15 条复盘（含判断失误、踩过的坑，以及一次被自己的验收流程藏起来的失败） |
 | `limitations` | 已知限制与适用边界 |
 | `platform_results` | 平台评测的结果原文（含准入结论与原始分） |
-| `learning_units` | 按 `agent-learning-evidence-v3-unbounded` 列出的 18 个证据实例：维度、档位、`student_evidence` 与 `result_evidence` 的 RFC6901 JSON pointer 与精确原文片段 |
+| `learning_units` | 按 `agent-learning-evidence-v3-unbounded` 列出的 20 个证据实例：维度、档位、**评分理由**、`student_evidence` 与 `result_evidence` 的 RFC6901 JSON pointer 与精确原文片段 |
 | `evidence_index` | 由 `learning_units` 生成，保证同一条证据只在一个维度里出现一次 |
 
 学生自己的技术判断是有限的，材料里没有把 Agent 的工作算成学生的贡献：

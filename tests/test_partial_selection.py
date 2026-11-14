@@ -104,6 +104,25 @@ class TiedOrderTest(unittest.TestCase):
         shifted = [row[0] for row in self.rows("SELECT id FROM t ORDER BY g, id LIMIT 2, 5;")]
         self.assertEqual(shifted, everything[2:7])
 
+    def test_a_limit_of_zero_returns_no_rows(self) -> None:
+        # The selection used to fail here: the partition of an empty request
+        # has nothing to select.
+        self.executor.execute(parse("CREATE TABLE t (id BIGINT PRIMARY KEY, g BIGINT);"))
+        for index in range(1, 6):
+            self.executor.execute(parse("INSERT INTO t VALUES (%d, %d);" % (index, index % 2)))
+        self.assertEqual(self.rows("SELECT id FROM t ORDER BY g LIMIT 0;"), [])
+        self.assertEqual(self.rows("SELECT id FROM t ORDER BY g, id LIMIT 0;"), [])
+        self.assertEqual(self.rows("SELECT id FROM t ORDER BY g LIMIT 0 OFFSET 2;"), [])
+        self.assertEqual(self.rows("SELECT id FROM t LIMIT 0;"), [])
+        self.assertEqual(self.rows("SELECT id FROM t ORDER BY g LIMIT 1;"), [[2]])
+
+    def test_a_limit_larger_than_the_table_returns_everything(self) -> None:
+        self.executor.execute(parse("CREATE TABLE t (id BIGINT PRIMARY KEY, g BIGINT);"))
+        for index in range(1, 6):
+            self.executor.execute(parse("INSERT INTO t VALUES (%d, %d);" % (index, index % 2)))
+        rows = [row[0] for row in self.rows("SELECT id FROM t ORDER BY g, id LIMIT 100;")]
+        self.assertEqual(rows, [2, 4, 1, 3, 5])
+
 
 if __name__ == "__main__":
     unittest.main()

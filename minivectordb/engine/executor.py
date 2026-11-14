@@ -996,6 +996,10 @@ class Executor:
         taken along, because their primary key decides the order between them.
         """
         first = arrays[0]
+        if wanted <= 0:
+            # ``LIMIT 0`` asks for no rows at all.  The partition below would
+            # have nothing to select.
+            return np.zeros(0, dtype=np.int64)
         if first.size <= wanted:
             return np.lexsort(tuple(reversed(arrays + [pks])))
         part = np.argpartition(first, wanted - 1)[:wanted]

@@ -39,6 +39,9 @@ _COLUMN_CACHE_BYTES = 0
 #: and dropped together with the column they belong to.
 _VECTOR_NORMS_CACHE: Dict[str, np.ndarray] = {}
 
+#: The file names of the columns: ``{column name: file name}``.
+_SAFE_NAMES: Dict[str, str] = {}
+
 
 def _cache_key(store: FileStore, key: str) -> str:
     return f"{store.root}|{key}"
@@ -102,7 +105,17 @@ class ColumnSpec:
 
 
 def _safe(name: str) -> str:
-    return "".join(ch if ch.isalnum() or ch == "_" else "_" for ch in name)
+    """The name of a file, with every character that is not allowed replaced.
+
+    The result is remembered: a query asks for the same column again and
+    again, and the loop over the characters is not free.
+    """
+    cached = _SAFE_NAMES.get(name)
+    if cached is not None:
+        return cached
+    safe = "".join(ch if ch.isalnum() or ch == "_" else "_" for ch in name)
+    _SAFE_NAMES[name] = safe
+    return safe
 
 
 class StringDictionary:
@@ -305,6 +318,23 @@ class StringDictionary:
         return self._rank, self._sorted
 
 
+def _all_bits_set(bits: bytearray, count: int) -> bool:
+    """True when every one of the ``count`` bits of the bitmap is set."""
+    if count <= 0:
+        return True
+    needed = (count + 7) // 8
+    if len(bits) < needed:
+        return False
+    array = np.frombuffer(bits, dtype=np.uint8, count=needed)
+    full = needed - 1
+    if full > 0 and not bool((array[:full] == 0xFF).all()):
+        return False
+    rest = count % 8
+    if rest:
+        return int(array[full]) == (0xFF & ((1 << rest) - 1))
+    return True
+
+
 class PrimaryKeyIndex:
     """In-memory open addressing hash index from primary key to row slot.
 
@@ -435,6 +465,9 @@ class Table:
         self.indexes: Dict[str, Dict[str, Any]] = {}
         # The alive bitmap is kept in memory; it mirrors ``alive.bits`` on disk.
         self.alive = bytearray()
+        #: True while every row of the table is alive.  A query without a
+        #: filter does not have to build the list of the live rows then.
+        self.all_alive = True
 
     def close(self) -> None:
         """Release the file handles of the dictionaries."""
@@ -640,6 +673,7 @@ class Table:
     def load_alive(self) -> None:
         """Read the alive bitmap from disk into memory."""
         self.alive = bytearray(self.store.read_all(self.alive_key))
+        self.all_alive = _all_bits_set(self.alive, self.n_slots)
 
     def live_slots(self) -> np.ndarray:
         alive = self.read_alive(0, self.n_slots)
@@ -798,6 +832,7 @@ class Table:
             self.alive[byte_index] |= 1 << bit_index
         else:
             self.alive[byte_index] &= ~(1 << bit_index) & 0xFF
+            self.all_alive = False
 
     def rebuild_primary_key_index(self) -> None:
         self.pk_index = PrimaryKeyIndex(max(16, self.n_slots * 2))

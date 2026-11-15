@@ -144,7 +144,8 @@ def l2_distances(
     # again with the difference formula.  The limit is far above the error of
     # the expansion, so only the rows that really are close to the query are
     # measured twice.
-    limit = 1e-3 * (norms64 + query_norm)
+    limit = norms64 + query_norm
+    limit *= 1e-3
     risky = np.nonzero(squared <= limit)[0]
     if risky.size:
         diff = matrix[risky].astype(np.float64) - query.astype(np.float64)

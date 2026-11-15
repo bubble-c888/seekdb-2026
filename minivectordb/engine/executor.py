@@ -785,15 +785,27 @@ class Executor:
         specs = self._order_specs(order, items)
         wanted = (offset + limit) if limit is not None else None
         best = _TopK(wanted)
+        # A query without a filter over a table whose rows are all alive does
+        # not have to look at the bitmap: every row of the chunk is a candidate.
+        # The list of the slots would be as long as the chunk, and building it
+        # costs more than the distance computation.
+        whole = (
+            not terms
+            and table.all_alive
+            and (overlay is None or (not overlay.rows and not overlay.deleted))
+        )
         for start in range(0, table.n_slots, CHUNK_ROWS):
             count = min(CHUNK_ROWS, table.n_slots - start)
             if count <= 0:
                 continue
-            mask = self._mask_for(table, terms, start, count, overlay)
-            selected = np.nonzero(mask)[0]
-            if selected.size == 0:
-                continue
-            slots = selected + start
+            if whole:
+                slots = None
+            else:
+                mask = self._mask_for(table, terms, start, count, overlay)
+                selected = np.nonzero(mask)[0]
+                if selected.size == 0:
+                    continue
+                slots = selected + start
             arrays = self._sort_arrays(table, specs, start, count, slots, overlay)
             pks = self._primary_key_array(table, start, count, slots, overlay)
             # Only the best rows of the chunk can enter the running list, so
@@ -801,7 +813,7 @@ class Executor:
             # partition and only they are sorted.  The rows that are exactly
             # as far away as the last one that is kept are taken along, their
             # primary key decides which of them comes first.
-            if wanted is not None and slots.size > wanted:
+            if wanted is not None and (count if slots is None else slots.size) > wanted:
                 keys = self._select_best(arrays, pks, wanted)
             else:
                 keys = np.lexsort(tuple(reversed(arrays + [pks])))
@@ -811,7 +823,7 @@ class Executor:
                     (
                         tuple(float(array[index]) for array in arrays)
                         + (int(pks[index]),),
-                        int(slots[index]),
+                        start + index if slots is None else int(slots[index]),
                     )
                 )
         if overlay is not None:
@@ -929,13 +941,15 @@ class Executor:
         specs: List[Tuple[str, ast.OrderItem, Any]],
         start: int,
         count: int,
-        slots: np.ndarray,
+        slots: Optional[np.ndarray],
         overlay: Optional[TableOverlay],
     ) -> List[np.ndarray]:
         """Return one numeric sort array per ORDER BY term.
 
         Descending order is expressed by negating the values, so that the
         ascending order of the negated values is the requested order.
+
+        ``slots`` is ``None`` when every row of the chunk is a candidate.
         """
         arrays: List[np.ndarray] = []
         # The list of the slots is only needed when the running transaction
@@ -946,7 +960,7 @@ class Executor:
         for kind, order_item, reference in specs:
             if kind == "column":
                 chunk = table.read_column(reference, start, count)
-                values = chunk[slots - start]
+                values = chunk if slots is None else chunk[slots - start]
                 if reference.type == "VARCHAR":
                     dictionary = table.dictionary(reference)
                     ranks = dictionary.rank_table()[0]
@@ -954,7 +968,7 @@ class Executor:
                     values = ranks[safe].astype(np.float64)
                 else:
                     values = values.astype(np.float64)
-                if overlay is not None and overlay.rows:
+                if overlay is not None and overlay.rows and slots is not None:
                     if slot_list is None:
                         slot_list = slots.tolist()
                     for index, slot in enumerate(slot_list):
@@ -979,7 +993,7 @@ class Executor:
                         )
                 else:
                     part = None
-                if slots.size == count:
+                if slots is None or slots.size == count:
                     # Every row of the chunk passes the filter, so the distances
                     # are computed for the whole chunk: copying the selected
                     # rows first would only duplicate the array.
@@ -988,7 +1002,7 @@ class Executor:
                     if part is not None:
                         part = part[slots - start]
                     values = l2_distances(vectors[slots - start], reference.vector, part)
-                if overlay is not None and overlay.rows:
+                if overlay is not None and overlay.rows and slots is not None:
                     # A row whose vector the transaction changed is measured
                     # with its new vector.
                     key = reference.column.key
@@ -1045,15 +1059,23 @@ class Executor:
         table: Table,
         start: int,
         count: int,
-        slots: np.ndarray,
+        slots: Optional[np.ndarray],
         overlay: Optional[TableOverlay],
     ) -> np.ndarray:
         if not table.primary_key:
-            return np.zeros(len(slots), dtype=np.int64)
+            return np.zeros(count if slots is None else len(slots), dtype=np.int64)
         column = table.primary_key_column()
         chunk = table.read_column(column, start, count)
-        values = chunk[slots - start].astype(np.int64)
-        if overlay is not None and overlay.rows:
+        if slots is None:
+            # Every row of the chunk is a candidate, so the column itself is
+            # the list of the keys.  It is only copied when the running
+            # transaction changes one of them.
+            values = chunk
+            if overlay is not None and overlay.rows:
+                values = np.array(chunk, dtype=np.int64, copy=True)
+        else:
+            values = np.asarray(chunk[slots - start], dtype=np.int64)
+        if overlay is not None and overlay.rows and slots is not None:
             key = column.key
             for index, slot in enumerate(slots.tolist()):
                 override = overlay.rows.get(slot)

@@ -34,6 +34,11 @@ CACHE_BUDGET = int(os.environ.get("MINIVECTORDB_CACHE_BYTES", str(32 * 1024 * 10
 _COLUMN_CACHE: Dict[str, np.ndarray] = {}
 _COLUMN_CACHE_BYTES = 0
 
+#: The squared length of every vector of a column: ``{cache key: numpy array}``.
+#: The norms do not depend on the query, so they are computed once per column
+#: and dropped together with the column they belong to.
+_VECTOR_NORMS_CACHE: Dict[str, np.ndarray] = {}
+
 
 def _cache_key(store: FileStore, key: str) -> str:
     return f"{store.root}|{key}"
@@ -46,6 +51,7 @@ def cache_invalidate(store: FileStore, key: str) -> None:
     array = _COLUMN_CACHE.pop(cache_key, None)
     if array is not None:
         _COLUMN_CACHE_BYTES -= array.nbytes
+    _VECTOR_NORMS_CACHE.pop(cache_key, None)
 
 
 def cache_store(store: FileStore, key: str, array: np.ndarray) -> np.ndarray:
@@ -546,6 +552,28 @@ class Table:
         if full is not None:
             return self._slice(full, start, count, np.float32)
         return self._read_vectors_from_disk(column, start, count)
+
+    def vector_norms(self, column: ColumnSpec) -> Optional[np.ndarray]:
+        """The squared length of every vector of the column.
+
+        The norms do not depend on the query, so the distance computation can
+        use them instead of summing the squares of every row again.  The
+        result is ``None`` when the column is too big for the cache; then the
+        distance computation does the work itself.
+        """
+        if column.type != "VECTOR":
+            return None
+        key = self.column_key(column)
+        cache_key = _cache_key(self.store, key)
+        norms = _VECTOR_NORMS_CACHE.get(cache_key)
+        if norms is not None:
+            return norms
+        full = self._full_column(column)
+        if full is None:
+            return None
+        norms = np.einsum("ij,ij->i", full, full, dtype=np.float64)
+        _VECTOR_NORMS_CACHE[cache_key] = norms
+        return norms
 
     @staticmethod
     def _slice(array: np.ndarray, start: int, count: int, dtype) -> np.ndarray:

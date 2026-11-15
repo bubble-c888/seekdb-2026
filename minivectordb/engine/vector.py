@@ -98,7 +98,11 @@ def format_vector(vector: np.ndarray) -> List[Any]:
     return [compact_float32(value) for value in np.asarray(vector, dtype=np.float32).tolist()]
 
 
-def l2_distances(matrix: np.ndarray, query: np.ndarray) -> np.ndarray:
+def l2_distances(
+    matrix: np.ndarray,
+    query: np.ndarray,
+    norms: Optional[np.ndarray] = None,
+) -> np.ndarray:
     """Euclidean distance between ``query`` and every row of ``matrix``.
 
     The squared distance is computed with the expansion
@@ -107,9 +111,9 @@ def l2_distances(matrix: np.ndarray, query: np.ndarray) -> np.ndarray:
 
     so that the inner product runs through the matrix product of the library
     instead of a pass over a difference matrix.  The norms of the rows do not
-    depend on the query, but they are not kept around, so they are computed
-    with every query; in float32 that costs a tenth of the difference
-    matrix, because float64 would copy the whole column.
+    depend on the query, so the caller can hand them in; when they are
+    missing they are computed here, in float32, which costs a tenth of the
+    difference matrix because float64 would copy the whole column.
 
     The expansion cancels: the norms are much larger than the squared
     distance, and the subtraction then loses digits.  The rows whose squared
@@ -124,11 +128,13 @@ def l2_distances(matrix: np.ndarray, query: np.ndarray) -> np.ndarray:
     if matrix.dtype != np.float32:
         matrix = matrix.astype(np.float32)
     rows = matrix.shape[0]
-    # The norms of the rows, in float32: the sum of 128 squares is accurate
-    # to about 1e-7, which is a twentieth of the tolerance of the task
-    # package, and float64 would copy the whole column on every query.
-    norms = np.einsum("ij,ij->i", matrix, matrix)
-    norms64 = norms.astype(np.float64)
+    if norms is not None and norms.shape[0] == rows:
+        norms64 = norms
+    else:
+        # The norms of the rows, in float64: the same precision as the cached
+        # ones, so that the answer does not depend on whether the column was
+        # in the cache.
+        norms64 = np.einsum("ij,ij->i", matrix, matrix, dtype=np.float64)
     query_norm = float(np.einsum("j,j->", query, query, dtype=np.float64))
     squared = norms64.copy()
     squared -= 2.0 * matrix.dot(query).astype(np.float64)

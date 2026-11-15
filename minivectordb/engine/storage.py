@@ -134,8 +134,17 @@ class FileStore:
         for key, patches in grouped.items():
             path = self._ensure_parent(key)
             with open(path, "r+b" if path.exists() else "w+b") as handle:
-                for offset, data in patches:
-                    handle.seek(offset)
+                # The patches that follow each other without a gap are
+                # written together: the rows of a batch are appended one
+                # after the other, so a hundred patches become one write.
+                index = 0
+                while index < len(patches):
+                    start, data = patches[index]
+                    index += 1
+                    while index < len(patches) and patches[index][0] == start + len(data):
+                        data = data + patches[index][1]
+                        index += 1
+                    handle.seek(start)
                     handle.write(data)
                 handle.flush()
             end = max(offset + len(data) for offset, data in patches)

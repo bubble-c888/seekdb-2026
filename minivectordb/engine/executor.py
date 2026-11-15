@@ -959,13 +959,29 @@ class Executor:
                     values = -values
             else:
                 vectors = table.read_vectors(reference.column, start, count)
+                # The norms of the rows do not depend on the query, so they are
+                # taken from the cache of the column when it is there.
+                norms = table.vector_norms(reference.column)
+                if norms is not None:
+                    part = norms[start : start + count]
+                    if part.shape[0] < vectors.shape[0]:
+                        part = np.concatenate(
+                            [
+                                part,
+                                np.zeros(vectors.shape[0] - part.shape[0], dtype=np.float64),
+                            ]
+                        )
+                else:
+                    part = None
                 if slots.size == count:
                     # Every row of the chunk passes the filter, so the distances
                     # are computed for the whole chunk: copying the selected
                     # rows first would only duplicate the array.
-                    values = l2_distances(vectors, reference.vector)
+                    values = l2_distances(vectors, reference.vector, part)
                 else:
-                    values = l2_distances(vectors[slots - start], reference.vector)
+                    if part is not None:
+                        part = part[slots - start]
+                    values = l2_distances(vectors[slots - start], reference.vector, part)
                 if overlay is not None and overlay.rows:
                     # A row whose vector the transaction changed is measured
                     # with its new vector.

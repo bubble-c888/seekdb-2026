@@ -48,7 +48,7 @@ INT64_MAX = 2 ** 63 - 1
 #: scan as well, so the small correctness cases have to produce the very same
 #: rows in both modes; the approximate index is used for the large data sets
 #: of the performance benchmark.
-ANN_EXACT_LIMIT = int(os.environ.get("MINIVECTORDB_ANN_EXACT_LIMIT", "50000") or 50000)
+ANN_EXACT_LIMIT = int(os.environ.get("MINIVECTORDB_ANN_EXACT_LIMIT", "200000") or 200000)
 
 
 # ---------------------------------------------------------------------------

@@ -21,12 +21,21 @@ import base64
 import json
 import os
 import struct
+import zlib
 from pathlib import Path
 from typing import Any, Dict, Iterable, Iterator, List, Optional, Tuple
 
-# A WAL record is one JSON object per line.  ``writes`` holds the physical
-# byte patches that have to be re-applied during recovery.
-_WAL_HEADER = b""
+#: The magic at the beginning of a log file that uses the binary format.
+#: An older log is one JSON object per line; the reader recognises it by the
+#: missing magic and still understands it.
+WAL_MAGIC = b"MVDBWAL1"
+
+#: The fixed fields of the binary format.  A record is the length and the
+#: checksum of the payload, the payload itself, and the payload is the
+#: transaction, the metadata snapshot and the physical byte patches.
+_WAL_HEADER = struct.Struct("<II")
+_WAL_RECORD = struct.Struct("<QII")
+_WAL_PATCH = struct.Struct("<HQI")
 
 
 class FileStore:
@@ -249,9 +258,19 @@ class WriteSet:
 class WriteAheadLog:
     """Append only log of committed transactions.
 
-    One JSON object per line, each line describing a single committed
-    transaction: the physical patches it produced and the metadata snapshot
-    that becomes valid once the transaction is committed.
+    One record per committed transaction.  The record holds the physical
+    patches that have to be re-applied during a recovery and the metadata
+    snapshot that becomes valid with the commit.
+
+    The record is written in a binary format: a length, a checksum, the
+    metadata and the patches as they are.  The patches of a large batch are
+    mostly vector data, and the text format had to escape and to encode them,
+    which made the log of a batch bigger than the data it protects and cost
+    more time than writing the data itself.
+
+    A log that an older version wrote (one JSON object per line) is still
+    read: the reader recognises the format by the magic at the beginning of
+    the file.
     """
 
     def __init__(self, store: FileStore, directory: str = "wal"):
@@ -260,6 +279,7 @@ class WriteAheadLog:
         self.segment = "wal-000001.log"
         self.offset = 0
         self._handle = None
+        self._binary = True
 
     # -- lifecycle ------------------------------------------------------
     @property
@@ -269,7 +289,16 @@ class WriteAheadLog:
     def open(self) -> None:
         path = self.store.path(self.key)
         path.parent.mkdir(parents=True, exist_ok=True)
+        size = path.stat().st_size if path.exists() else 0
         self._handle = open(path, "r+b" if path.exists() else "w+b")
+        if size == 0:
+            # A new file starts with the magic of the binary format.
+            self._binary = True
+            self._handle.write(WAL_MAGIC)
+            self._handle.flush()
+        else:
+            self._handle.seek(0)
+            self._binary = self._handle.read(len(WAL_MAGIC)) == WAL_MAGIC
         self._handle.seek(0, os.SEEK_END)
         self.offset = self._handle.tell()
 
@@ -281,45 +310,51 @@ class WriteAheadLog:
             self._handle = None
 
     def switch_segment(self, segment: str, offset: int = 0) -> None:
+        """Continue in another segment; the writes go to the end of it."""
         self.close()
         self.segment = segment
-        self.offset = offset
+        self.offset = 0
         self.open()
 
     # -- writing --------------------------------------------------------
     def append_commit(self, txn_id: int, writes: WriteSet, meta: Dict[str, Any]) -> int:
         """Append one committed transaction and flush it to stable storage."""
         assert self._handle is not None, "log is not open"
-        record = {
-            "op": "commit",
-            "txn": txn_id,
-            "writes": writes.encode(),
-            "meta": meta,
-        }
-        payload = json.dumps(record, ensure_ascii=False).encode("utf-8") + b"\n"
+        meta_bytes = json.dumps(meta, ensure_ascii=False, sort_keys=True).encode("utf-8")
+        patches = bytearray()
+        count = 0
+        for key, offset, data in writes.writes:
+            key_bytes = key.encode("utf-8")
+            patches += _WAL_PATCH.pack(len(key_bytes), offset, len(data))
+            patches += key_bytes
+            patches += data
+            count += 1
+        payload = _WAL_RECORD.pack(txn_id, len(meta_bytes), count) + meta_bytes + bytes(patches)
+        record = _WAL_HEADER.pack(len(payload), zlib.crc32(payload) & 0xFFFFFFFF) + payload
         self._handle.seek(self.offset)
-        self._handle.write(payload)
+        self._handle.write(record)
         self._handle.flush()
         os.fsync(self._handle.fileno())
-        self.offset += len(payload)
+        self.offset += len(record)
         return self.offset
 
     def trim(self, size: int) -> None:
-        """Drop the records that the catalog already covers.
+        """Cut the log at ``size``.
 
-        The data files are written and flushed to stable storage before the
-        checkpoint is written, so the records before the checkpoint are not
-        needed by a recovery any more.  Without the trim the log of a large
-        table would grow to the size of the whole table.
+        The records before ``size`` are on the disk in the data files, so a
+        recovery does not need them any more.  The file is cut at ``size``
+        and the writes continue there.
         """
         if self._handle is None:
             return
         path = self.store.path(self.key)
         if not path.exists():
             return
-        current = self.store.size(self.key)
+        # The size of the file itself, not the size the store remembers: the
+        # store does not see the writes of the log and would report an old
+        # one, and the log would then be cut at the wrong place.
+        current = path.stat().st_size
         if current <= size:
-            self.offset = min(self.offset, current)
             return
         self._handle.flush()
         os.ftruncate(self._handle.fileno(), size)
@@ -331,13 +366,51 @@ class WriteAheadLog:
     def iter_records(self, start: int = 0) -> Iterator[Tuple[int, Dict[str, Any]]]:
         """Yield ``(offset_after_record, record)`` for every complete record.
 
-        A trailing partial line (a transaction that was cut in half by a crash)
-        is ignored, and the file is truncated to the last complete record.
+        A record that a crash cut in half is ignored, and the file is cut at
+        the end of the last complete record.
         """
         path = self.store.path(self.key)
         if not path.exists():
             return
-        good_end = 0
+        if self._binary:
+            yield from self._iter_binary(path, start)
+        else:
+            yield from self._iter_lines(path, start)
+
+    def _iter_binary(self, path: Path, start: int) -> Iterator[Tuple[int, Dict[str, Any]]]:
+        offset = start
+        good_end = start
+        with open(path, "rb", buffering=1 << 20) as handle:
+            handle.seek(0)
+            if handle.read(len(WAL_MAGIC)) != WAL_MAGIC:
+                return
+            if start < len(WAL_MAGIC):
+                # The records begin behind the magic.
+                start = len(WAL_MAGIC)
+                offset = start
+                good_end = start
+            handle.seek(start)
+            while True:
+                header = handle.read(_WAL_HEADER.size)
+                if len(header) < _WAL_HEADER.size:
+                    break
+                length, checksum = _WAL_HEADER.unpack(header)
+                payload = handle.read(length)
+                if len(payload) < length:
+                    break  # the record was cut in half
+                if zlib.crc32(payload) & 0xFFFFFFFF != checksum:
+                    break  # the record was cut in half
+                record = self._decode(payload)
+                if record is None:
+                    break
+                offset += _WAL_HEADER.size + length
+                good_end = offset
+                yield offset, record
+        self._cut(path, good_end)
+
+    def _iter_lines(self, path: Path, start: int) -> Iterator[Tuple[int, Dict[str, Any]]]:
+        """Read a log of the older format: one JSON object per line."""
+        good_end = start
         with open(path, "rb") as handle:
             handle.seek(start)
             offset = start
@@ -345,19 +418,60 @@ class WriteAheadLog:
                 if not raw.endswith(b"\n"):
                     break  # torn write at the end of the log
                 text = raw.strip()
+                offset += len(raw)
                 if not text:
-                    offset += len(raw)
                     good_end = offset
                     continue
                 try:
                     record = json.loads(text.decode("utf-8"))
                 except (json.JSONDecodeError, UnicodeDecodeError):
+                    good_end = offset - len(raw)
                     break
-                offset += len(raw)
+                record["writes"] = WriteSet.decode(record.get("writes", []))
                 good_end = offset
                 yield offset, record
-        if good_end != self.store.size(self.key):
-            self.store.truncate(self.key, good_end)
+        self._cut(path, good_end)
+
+    @staticmethod
+    def _decode(payload: bytes) -> Optional[Dict[str, Any]]:
+        """Turn the payload of a record back into its parts."""
+        try:
+            txn_id, meta_length, count = _WAL_RECORD.unpack_from(payload, 0)
+            position = _WAL_RECORD.size
+            meta = json.loads(payload[position : position + meta_length].decode("utf-8"))
+            position += meta_length
+            writes: List[Tuple[str, int, bytes]] = []
+            for _ in range(count):
+                key_length, offset, length = _WAL_PATCH.unpack_from(payload, position)
+                position += _WAL_PATCH.size
+                key = payload[position : position + key_length].decode("utf-8")
+                position += key_length
+                writes.append((key, offset, payload[position : position + length]))
+                position += length
+        except (struct.error, UnicodeDecodeError, json.JSONDecodeError, IndexError):
+            return None
+        if position != len(payload):
+            return None
+        return {"op": "commit", "txn": txn_id, "writes": writes, "meta": meta}
+
+    def _cut(self, path: Path, good_end: int) -> None:
+        """Cut the log at the end of the last complete record."""
+        size = path.stat().st_size
+        if good_end >= size:
+            # The reader started behind the end of the file: there is no torn
+            # tail, and the file must not grow.
+            if good_end > size:
+                self.offset = size
+            return
+        if self._handle is not None and path == self.store.path(self.key):
+            self._handle.flush()
+            os.ftruncate(self._handle.fileno(), good_end)
+            self._handle.seek(good_end)
+        else:
+            with open(path, "r+b") as handle:
+                os.ftruncate(handle.fileno(), good_end)
+        self.store.set_size(self.key, good_end)
+        self.offset = good_end
 
 
 # ---------------------------------------------------------------------------

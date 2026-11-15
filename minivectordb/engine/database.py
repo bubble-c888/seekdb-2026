@@ -36,6 +36,12 @@ from .table import ColumnSpec, Table, TableOverlay, cache_invalidate
 CATALOG_FILE = "catalog.json"
 WAL_DIR = "wal"
 
+#: How many commits pass before the data files are flushed and the catalog is
+#: written.  The commit point is the flush of the log, so the commits since
+#: the last checkpoint are replayed by a recovery and do not have to be on the
+#: disk before the next commit.
+CHECKPOINT_EVERY = int(os.environ.get("MINIVECTORDB_CHECKPOINT_EVERY", "10") or "10")
+
 
 @dataclass
 class Transaction:
@@ -67,6 +73,10 @@ class Database:
         self.mode = "exact"
         self.indexes: Dict[Tuple[str, str], VectorIndex] = {}
         self._pending_checkpoint = False
+        #: The files that were written since the last checkpoint.
+        self._dirty_keys: Set[str] = set()
+        #: The commits since the last checkpoint.
+        self._pending_commits = 0
 
     # ------------------------------------------------------------------
     # lifecycle
@@ -86,7 +96,9 @@ class Database:
 
     def close(self) -> None:
         try:
-            self.checkpoint()
+            # The data files are flushed before the catalog is written, so that
+            # the catalog never claims more than what is on the disk.
+            self._flush_and_checkpoint()
         finally:
             self.wal.close()
             for table in self.tables.values():
@@ -112,28 +124,31 @@ class Database:
         if not segments:
             self.wal.open()
             return
-        start_segment = self.metadata.get("wal", {}).get("segment")
+        wal_meta = self.metadata.get("wal", {})
+        start_segment = wal_meta.get("segment")
+        start_offset = int(wal_meta.get("offset", 0))
         touched: Set[str] = set()
         last_segment = segments[0]
         for segment in segments:
-            offset = 0
-            if segment == start_segment:
-                offset = int(self.metadata.get("wal", {}).get("offset", 0))
+            last_segment = segment
+            if start_segment is not None and segment < start_segment:
+                # The checkpoint covers this segment completely.
+                continue
+            offset = start_offset if segment == start_segment else 0
             self.wal.segment = segment
             self.wal.open()
             try:
                 for _end, record in self.wal.iter_records(offset):
                     if record.get("op") != "commit":
                         continue
-                    for key, position, data in WriteSet.decode(record.get("writes", [])):
-                        self.store.write(key, position, data)
-                        touched.add(key)
+                    patches = record.get("writes", [])
+                    if patches:
+                        touched.update(self.store.apply_writes(patches))
                     meta = record.get("meta")
                     if meta:
                         self.metadata = meta
             finally:
                 self.wal.close()
-            last_segment = segment
         if touched:
             self.store.fsync(touched)
         # Continue logging in the last segment that was processed.
@@ -280,8 +295,7 @@ class Database:
         keys = self.store.apply_writes(txn.writes.writes)
         for key in keys:
             cache_invalidate(self.store, key)
-        if keys:
-            self.store.fsync(keys)
+        self._dirty_keys.update(keys)
 
         # 6. the values of the dictionary are in the files now, they are read
         #    from there instead of from the memory
@@ -293,15 +307,53 @@ class Database:
                 if column.type == "VARCHAR":
                     table.dictionary(column).flush()
 
-        # 7. the catalog remembers how far the log was applied.  Without this
-        #    a recovery after a crash would have to replay the whole log, and
-        #    the log of a large table does not fit into the time a start may
-        #    take.  The data files are durable at this point, so the records
-        #    before the checkpoint are not needed any more and the log is
-        #    trimmed: without the trim the log of a large table would grow to
-        #    the size of the whole table.
+        # 7. the commit point was the flush of the log.  The data files are
+        #    only flushed before a checkpoint, because the log holds the
+        #    patches of the commits since the last one and a recovery replays
+        #    them.  Flushing the data files on every commit cost five flushes
+        #    per commit and the data was durable anyway.
+        self._pending_commits += 1
+        if self._pending_commits >= CHECKPOINT_EVERY:
+            self._flush_and_checkpoint()
+
+    def _flush_and_checkpoint(self) -> None:
+        """Make the data files durable and write the catalog.
+
+        After this the log may be dropped: the records before the checkpoint
+        are not needed by a recovery any more.  The commits since the last
+        checkpoint are in the log and are replayed when the process died
+        before the data files were flushed.
+        """
+        if self._dirty_keys:
+            self.store.fsync(self._dirty_keys)
+            self._dirty_keys.clear()
+        self._rotate_wal()
         self.checkpoint()
-        self.wal.trim(self.wal.offset)
+        self._pending_commits = 0
+
+    def _rotate_wal(self) -> None:
+        """Start a new log segment and drop the ones the checkpoint covers.
+
+        The records of the old segment are on the disk in the data files, so
+        the log of a long run does not grow to the size of the whole table.
+        The catalog is written after the rotation and names the new segment,
+        so a recovery reads the records that are not on the disk yet.
+        """
+        try:
+            index = int(self.wal.segment[len("wal-") : -len(".log")]) + 1
+        except ValueError:
+            index = 1
+        old_segments = self._segments()
+        self.wal.switch_segment("wal-%06d.log" % index)
+        for name in old_segments:
+            if name < self.wal.segment:
+                try:
+                    self.store.remove("%s/%s" % (WAL_DIR, name))
+                except OSError:
+                    # Another process still has the file open.  The segment
+                    # is skipped by the recovery anyway, so it is only a
+                    # leftover that the next checkpoint removes.
+                    pass
 
     # ------------------------------------------------------------------
     # helpers used by the executor

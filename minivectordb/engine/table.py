@@ -39,6 +39,9 @@ _COLUMN_CACHE_BYTES = 0
 #: and dropped together with the column they belong to.
 _VECTOR_NORMS_CACHE: Dict[str, np.ndarray] = {}
 
+#: The largest squared length of a vector column: ``{cache key: float}``.
+_VECTOR_NORMS_MAX_CACHE: Dict[str, float] = {}
+
 #: The file names of the columns: ``{column name: file name}``.
 _SAFE_NAMES: Dict[str, str] = {}
 
@@ -55,6 +58,7 @@ def cache_invalidate(store: FileStore, key: str) -> None:
     if array is not None:
         _COLUMN_CACHE_BYTES -= array.nbytes
     _VECTOR_NORMS_CACHE.pop(cache_key, None)
+    _VECTOR_NORMS_MAX_CACHE.pop(cache_key, None)
 
 
 def cache_store(store: FileStore, key: str, array: np.ndarray) -> np.ndarray:
@@ -607,6 +611,28 @@ class Table:
         norms = np.einsum("ij,ij->i", full, full, dtype=np.float64)
         _VECTOR_NORMS_CACHE[cache_key] = norms
         return norms
+
+    def vector_norms_max(self, column: ColumnSpec) -> Optional[float]:
+        """The largest squared length of the vector column.
+
+        The distance computation needs it to decide whether any row of the
+        column can be close enough to the query for the expansion to lose
+        digits.  It does not depend on the query, so it is remembered with
+        the norms.
+        """
+        if column.type != "VECTOR":
+            return None
+        key = self.column_key(column)
+        cache_key = _cache_key(self.store, key)
+        value = _VECTOR_NORMS_MAX_CACHE.get(cache_key)
+        if value is not None:
+            return value
+        norms = self.vector_norms(column)
+        if norms is None:
+            return None
+        value = float(norms.max())
+        _VECTOR_NORMS_MAX_CACHE[cache_key] = value
+        return value
 
     @staticmethod
     def _slice(array: np.ndarray, start: int, count: int, dtype) -> np.ndarray:

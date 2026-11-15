@@ -982,6 +982,9 @@ class Executor:
                 # The norms of the rows do not depend on the query, so they are
                 # taken from the cache of the column when it is there.
                 norms = table.vector_norms(reference.column)
+                norms_max = (
+                    table.vector_norms_max(reference.column) if norms is not None else None
+                )
                 if norms is not None:
                     part = norms[start : start + count]
                     if part.shape[0] < vectors.shape[0]:
@@ -997,11 +1000,13 @@ class Executor:
                     # Every row of the chunk passes the filter, so the distances
                     # are computed for the whole chunk: copying the selected
                     # rows first would only duplicate the array.
-                    values = l2_distances(vectors, reference.vector, part)
+                    values = l2_distances(vectors, reference.vector, part, norms_max)
                 else:
                     if part is not None:
                         part = part[slots - start]
-                    values = l2_distances(vectors[slots - start], reference.vector, part)
+                    values = l2_distances(
+                        vectors[slots - start], reference.vector, part, norms_max
+                    )
                 if overlay is not None and overlay.rows and slots is not None:
                     # A row whose vector the transaction changed is measured
                     # with its new vector.
@@ -1042,12 +1047,11 @@ class Executor:
             return np.lexsort(tuple(reversed(arrays + [pks])))
         part = np.argpartition(first, wanted - 1)[:wanted]
         cut = float(first[part].max())
-        keep = np.zeros(first.size, dtype=bool)
-        keep[part] = True
-        # The rows that are exactly as far away as the cut are added, so that
-        # the order between them is the same as in a complete sort.
-        keep |= first == cut
-        candidates = np.nonzero(keep)[0]
+        # The rows that are exactly as far away as the cut are taken along, so
+        # that the order between them is the same as in a complete sort.  They
+        # are the rows that are not farther away than the cut: every row that
+        # is closer than the cut is one of the selected ones.
+        candidates = np.nonzero(first <= cut)[0]
         return candidates[
             np.lexsort(
                 tuple(reversed([array[candidates] for array in arrays] + [pks[candidates]]))

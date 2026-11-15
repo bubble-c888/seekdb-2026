@@ -102,6 +102,7 @@ def l2_distances(
     matrix: np.ndarray,
     query: np.ndarray,
     norms: Optional[np.ndarray] = None,
+    norms_max: Optional[float] = None,
 ) -> np.ndarray:
     """Euclidean distance between ``query`` and every row of ``matrix``.
 
@@ -137,19 +138,29 @@ def l2_distances(
         norms64 = np.einsum("ij,ij->i", matrix, matrix, dtype=np.float64)
     query_norm = float(np.einsum("j,j->", query, query, dtype=np.float64))
     squared = norms64.copy()
-    squared -= 2.0 * matrix.dot(query).astype(np.float64)
+    # The factor two is exact in every format, so the product is computed in
+    # float64 in one step instead of being copied twice.
+    squared -= np.multiply(matrix.dot(query), 2.0, dtype=np.float64)
     squared += query_norm
     np.maximum(squared, 0.0, out=squared)
     # The rows whose digits the expansion may have destroyed are measured
     # again with the difference formula.  The limit is far above the error of
     # the expansion, so only the rows that really are close to the query are
     # measured twice.
-    limit = norms64 + query_norm
-    limit *= 1e-3
-    risky = np.nonzero(squared <= limit)[0]
-    if risky.size:
-        diff = matrix[risky].astype(np.float64) - query.astype(np.float64)
-        squared[risky] = np.einsum("ij,ij->i", diff, diff, dtype=np.float64)
+    #
+    # The limit of a row is 1e-3 * (the norm of the row + the norm of the
+    # query), so the largest limit of the chunk is known from the largest
+    # norm alone.  When the closest row of the chunk is farther away than
+    # that, no row can be at risk and the whole search is skipped.
+    if norms_max is None:
+        norms_max = float(norms64.max())
+    if float(squared.min()) <= 1e-3 * (norms_max + query_norm):
+        limit = norms64 + query_norm
+        limit *= 1e-3
+        risky = np.nonzero(squared <= limit)[0]
+        if risky.size:
+            diff = matrix[risky].astype(np.float64) - query.astype(np.float64)
+            squared[risky] = np.einsum("ij,ij->i", diff, diff, dtype=np.float64)
     return np.sqrt(squared, out=squared)
 
 

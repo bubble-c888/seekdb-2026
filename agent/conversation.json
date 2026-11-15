@@ -8,7 +8,7 @@
   "scope":"本文件记录本次提交版本的开发过程：学生（参赛者）的原始需求与关键判断、Agent 的实现过程、实际执行的验证实验及结果、以及已知限制。全部实验输出均为真实执行结果，未执行的内容明确标注为计划。",
   "evidence_policy":"student_evidence 字段是学生本人的原话；result_evidence 字段是实际结果的原文；output 字段是真实执行后的原始输出；dialogue 是本场开发的真实交互记录，学生的发言为原文，Agent 的回复为该轮可见正文。learning_units 按 agent-learning-evidence-v3-unbounded 列出本次提交可核对的证据实例：每条给出维度、档位、student_evidence 与 result_evidence 的 RFC6901 JSON pointer 与精确原文片段；同一条证据只在一个实例里出现，evidence_index 由这张表生成。",
   "storage_layout":"应用（Docker Desktop）装在 E:\\Docker；Docker 的镜像与卷（运行产生的数据）放在 E:\\DockerData\\wsl；任务产生的源码、脚本、日志、测试数据与报告放在 E:\\MiniVectorDB。",
-  "submitted_version":"2026-competition-round2 @ b00dc3e7 (本次材料在该提交之后更新)"
+  "submitted_version":"2026-competition-round2 @ 6b642eda (本次材料在该提交之后更新)"
  },
  "user_prompts":[
   {
@@ -104,7 +104,7 @@
    "method":"tools/run_case.py 为每个用例新建独立空数据目录，逐行发送 .test 的 SQL，把 stdout 的每个 JSON 对象与 .result 同位置断言比较（浮点 1e-5 绝对与相对误差，未标 unordered 的按序比较）。",
    "command":"python tools/run_case.py --cases-dir mysqltest",
    "conclusion":"公开用例全通过。注意公开用例只是样例，不等于正式准入。该结果对应题包 v1（5 个用例）；题包后来升级为 v4（20 个用例），结果见 e11。",
-   "output":"[PASS] sql_crud statements=9/9 duration=0.229s\n[PASS] sql_comparisons statements=7/7 duration=0.222s\n[PASS] sql_ordering stateme…（后略）",
+   "output":"[PASS] sql_crud statements=9/9 duration=0.229s\n[PASS] sql_comparisons statements=7/7 duration=0.22…（后略）",
    "source":"tool_result"
   },
   {
@@ -122,7 +122,7 @@
    "method":"两个用例分别模拟：(1) 直接丢弃未提交事务后重启，数据目录中不得出现该事务的行；(2) 注入故障让提交在“日志已落盘、数据文件还没写”之间崩溃，重启后靠日志重放恢复出已提交行。",
    "command":"python -m unittest tests.test_engine.PersistenceTest",
    "conclusion":"崩溃模型满足题目要求：已确认提交的不丢、未提交的不部分生效、重复恢复幂等。",
-   "output":"test_uncommitted_transaction_is_not_persisted ... ok\ntest_committed_transaction_is_recovered_after_a_crash ... ok\ntest_recovery_…（后略）",
+   "output":"test_uncommitted_transaction_is_not_persisted ... ok\ntest_committed_transaction_is_recovered_after…（后略）",
    "source":"tool_result"
   },
   {
@@ -131,7 +131,7 @@
    "method":"VectorTest：建索引后交错执行插入、向量更新、删除，分别在 ann 与 exact 模式下查询并比对主键序列。",
    "command":"python -m unittest tests.test_engine.VectorTest",
    "conclusion":"索引维护正确；即使建了近似索引，exact 模式返回的仍是精确结果。",
-   "output":"test_exact_mode_ignores_the_approximate_index ... ok\ntest_approximate_search_sees_new_updated_and_deleted_rows ... ok\ntest_delet…（后略）",
+   "output":"test_exact_mode_ignores_the_approximate_index ... ok\ntest_approximate_search_sees_new_updated_and_…（后略）",
    "source":"tool_result"
   },
   {
@@ -149,7 +149,7 @@
    "method":"ErrorTest 覆盖 ALTER/DROP/COUNT(*)/JOIN/IS NULL/OR/INSERT..SELECT/更新主键/GROUP BY/HAVING，均要求抛错。",
    "command":"python -m unittest tests.test_engine.ErrorTest",
    "conclusion":"题目列出的禁用特性全部返回错误码而不是悄悄执行；字符串比较确实是码点序。",
-   "output":"test_unsupported_statements_are_rejected ... ok\ntest_duplicate_primary_key ... ok\ntest_vector_dimension_is_validated ... ok\ntest…（后略）",
+   "output":"test_unsupported_statements_are_rejected ... ok\ntest_duplicate_primary_key ... ok\ntest_vector_dime…（后略）",
    "source":"tool_result"
   },
   {
@@ -176,7 +176,7 @@
    "method":"分阶段计时：先按块预取排序列与主键（消除逐行读盘），再改成块内 np.lexsort 取 TopK、只为最终 K 行构造结果集，再加带预算的列缓存；写入侧把字节补丁按文件合并。",
    "command":"python tools/benchmark.py --rows 2000 --queries 100",
    "conclusion":"初版慢的主因是排序阶段逐行读主键（每次文件 open 约 0.6ms）和逐行构造结果集，不是距离计算本身；距离计算一直在 numpy 里。",
-   "output":"阶段一（修复前）：\"query_ms_each\": 850.112，write_seconds 14.673（2000 行）\n阶段二（按块预取）：\"query_ms_each\": 67.637\n阶段三（块内 TopK + 仅构造 K 行）：单次查询 3.7…（后略）",
+   "output":"阶段一（修复前）：\"query_ms_each\": 850.112，write_seconds 14.673（2000 行）\n阶段二（按块预取）：\"query_ms_each\": 67.637\n阶…（后略）",
    "source":"tool_result"
   },
   {
@@ -194,7 +194,7 @@
    "method":"先把上游 mysqltest/ 更新到仓库，再让自测驱动支持 --restart（关闭 stdin、等退出、用同一数据目录重启）与 --mode（切模式且不占断言位），逐用例比对 .result。",
    "command":"python tools/run_case.py",
    "conclusion":"第一次跑 v4 时 vector_ties_and_filter 失败：过滤值不存在时返回了别的分组。修复字符串等值比较后 20/20 全通过。",
-   "output":"[PASS] sql_crud statements=7/7\n[PASS] sql_comparisons statements=4/4\n[PASS] sql_ordering statements=4/4\n[PASS] sql_empty stateme…（后略）",
+   "output":"[PASS] sql_crud statements=7/7\n[PASS] sql_comparisons statements=4/4\n[PASS] sql_ordering statement…（后略）",
    "source":"tool_result"
   },
   {
@@ -203,7 +203,7 @@
    "method":"建表后写入 'keep' 与 'skip' 两组，用不存在的字面量 'absent' 做等值过滤，对比修复前后的返回行；同时覆盖事务内（overlay）路径与排序比较（<、>=）。",
    "command":"python -m unittest tests.test_edge_cases.StringSemanticsTest",
    "conclusion":"字典中不存在的字面量不再匹配任何行；排序类比较仍按字典序插入位置定义，符合『字符串按码点序比较』的要求。",
-   "output":"修复前：SELECT id FROM t WHERE s = 'absent' 返回 [[1]]（'keep' 的行）\n修复后：assertEqual(self.rows(\"SELECT id FROM t WHERE s = 'absent';\"), […（后略）",
+   "output":"修复前：SELECT id FROM t WHERE s = 'absent' 返回 [[1]]（'keep' 的行）\n修复后：assertEqual(self.rows(\"SELECT id F…（后略）",
    "source":"tool_result"
   },
   {
@@ -212,7 +212,7 @@
    "method":"把精确扫描阈值压到 0 强制走 IVF 倒排表，400 行 2 维数据上对比 ann 与 exact 的 TopK 序列；再用 60,000 行 128 维跑基准统计 Recall@10。",
    "command":"python -m unittest tests.test_edge_cases.ApproximateModeTest\npython tools/benchmark.py --rows 60000 --queries 50 --dim 128 --k 10 --mode ann",
    "conclusion":"簇半径下界的停止准则让近似路径在两个规模上召回都达到 1.0，且过滤条件不被放宽、结果无重复。",
-   "output":"修复前 ann 与 exact 的第 10 条不同（ann 给 239，exact 给 169，召回 0.9）\n修复后：exact: [204, 197, 211, 190, 218, 183, 225, 176, 232, 169] / ann: [20…（后略）",
+   "output":"修复前 ann 与 exact 的第 10 条不同（ann 给 239，exact 给 169，召回 0.9）\n修复后：exact: [204, 197, 211, 190, 218, 183, …（后略）",
    "source":"tool_result"
   },
   {
@@ -221,7 +221,7 @@
    "method":"tests/test_edge_cases.py：CrashRecoveryTest 用真实子进程写入后 kill -9，再重新打开数据目录核对；ProtocolTest 用子进程分别喂『无换行』『无分号』『驱动指令』『注释』四种输入，核对 stdout …",
    "command":"python -m unittest tests.test_edge_cases",
    "conclusion":"崩溃恢复满足『完整生效或完全不生效』；协议层对多种驱动写法都能保持一条语句一行结果。",
-   "output":"test_committed_data_survives_a_kill ... ok\ntest_uncommitted_data_does_not_survive_a_kill ... ok\ntest_a_statement_without_a_newli…（后略）",
+   "output":"test_committed_data_survives_a_kill ... ok\ntest_uncommitted_data_does_not_survive_a_kill ... ok\nte…（后略）",
    "source":"tool_result"
   },
   {
@@ -230,7 +230,7 @@
    "method":"跑全部单测模块、20 个公开用例，并按题目口径跑基准（10,000 行 128 维、1,000 次 TopK 查询、K=10、一半带等值过滤）。",
    "command":"python -m unittest tests.test_engine tests.test_parser tests.test_compare tests.test_harness_smoke tests.test_edge_cases\npython tools/run_case.py\npython tools/benchmark.py --rows 10000 --queries 200 --dim 128 --k 10",
    "conclusion":"全量回归通过，性能与内存没有因为协议层与近似路径的改造而退化。",
-   "output":"Ran 159 tests in 7.717s\nOK\nsummary: 20/20 cases passed (no failures)\n{\"rows\": 10000, \"queries\": 200, \"dim\": 128, \"k\": 10, \"mode\"…（后略）",
+   "output":"Ran 159 tests in 7.717s\nOK\nsummary: 20/20 cases passed (no failures)\n{\"rows\": 10000, \"queries\": 20…（后略）",
    "source":"tool_result"
   },
   {
@@ -239,7 +239,7 @@
    "method":"构建 minivectordb:local 后，用脚本按题包的执行约定驱动容器：每个用例独立数据目录，逐行把 .test 的 SQL 喂给容器的 stdin，按顺序把 stdout 的每个 JSON 对象与同名 .result 的断言比较；遇到 --res…",
    "command":"docker build -t minivectordb:local G:\\MiniVectorDB\\seekdb-round2\npython G:\\MiniVectorDB\\scripts\\docker_cases.py",
    "conclusion":"镜像内 20/20 通过，说明 Dockerfile、入口参数、/data 挂载与协议实现是自洽的。",
-   "output":"[PASS] sql_crud (7 statements)\n[PASS] sql_comparisons (4 statements)\n[PASS] sql_ordering (4 statements)\n[PASS] sql_empty (3 stat…（后略）",
+   "output":"[PASS] sql_crud (7 statements)\n[PASS] sql_comparisons (4 statements)\n[PASS] sql_ordering (4 statem…（后略）",
    "source":"tool_result"
   },
   {
@@ -248,7 +248,7 @@
    "method":"对每一类语句直接调用引擎并打印错误语义名；对 BIGINT 越界额外检查是否抛出 MiniVectorDBError 之外的异常。",
    "command":"python G:\\MiniVectorDB\\scripts\\probe_errors.py",
    "conclusion":"两处不一致：外键与嵌套事务返回的不是 unsupported_sql；BIGINT 越界抛的是 Python 的 struct.error，绕过了语义错误体系。另外非数与无穷大的向量分别报 value_out_of_range…",
-   "output":"NULL 值         | unsupported_sql\nJOIN            | unsupported_sql\n聚合 COUNT      | unsupported_sql\n聚合 SUM        | unsupported_s…（后略）",
+   "output":"NULL 值         | unsupported_sql\nJOIN            | unsupported_sql\n聚合 COUNT      | unsupported_sql…（后略）",
    "source":"tool_result"
   },
   {
@@ -257,7 +257,7 @@
    "method":"容器带 512 MiB 的 cgroup 内存上限，数据写入容器内的命名卷（与评测平台的普通文件系统一致）；10,000 行 × 128 维随机向量，每批 100 行提交一次；1,000 次 TopK 查询 K=10，一半带普通列等值过滤；真值由驱动侧用 …",
    "command":"python G:\\MiniVectorDB\\scripts\\perf_check.py --rows 10000 --queries 1000 --batch 100 --memory 512m",
    "conclusion":"内存与召回达标，但写入 33.3 秒明显偏慢（直接调引擎只要 4.3 秒），说明瓶颈在协议层而不是引擎。过滤召回 0.053 是驱动脚本把过滤查询的真值算成了全表真值，属脚本口径错误，已修正。",
-   "output":"{\n  \"rows\": 10000,\n  \"queries\": 1000,\n  \"batch\": 100,\n  \"write_seconds\": 33.326,\n  \"query_seconds\": 5.257,\n  \"query_ms_avg\": 5.1…（后略）",
+   "output":"{\n  \"rows\": 10000,\n  \"queries\": 1000,\n  \"batch\": 100,\n  \"write_seconds\": 33.326,\n  \"query_seconds\"…（后略）",
    "source":"tool_result"
   },
   {
@@ -266,7 +266,7 @@
    "method":"改动两处：语句扫描器可续扫（记住扫描位置与字符串/注释状态），顶层分号结束即执行；只有输入静默且语句没有分号时才做完整的可解析性判定。随后重跑 162 个单测、20 个公开用例与同一套基准。",
    "command":"python -m unittest tests.test_engine tests.test_parser tests.test_compare tests.test_harness_smoke tests.test_edge_cases\npython tools/run_case.py --cases-dir mysqltest\npython G:\\MiniVectorDB\\scripts\\perf_check.py --rows 10000 --queries 1000 --batch 100 --memory 512m",
    "conclusion":"写入 33.3 秒降到 5.4 秒（6.1 倍），查询 5.16 毫秒降到 3.04 毫秒（1.7 倍），两组 Recall@10 为 0.9996 与 0.9998，全部单测与公开用例仍然通过，说明协议语义没有变化。",
-   "output":"Ran 162 tests in 9.828s\nOK\nsummary: 20/20 cases passed (no failures)\n{\n  \"rows\": 10000,\n  \"queries\": 1000,\n  \"batch\": 100,\n  \"wr…（后略）",
+   "output":"Ran 162 tests in 9.828s\nOK\nsummary: 20/20 cases passed (no failures)\n{\n  \"rows\": 10000,\n  \"queries…（后略）",
    "source":"tool_result"
   },
   {
@@ -275,7 +275,7 @@
    "method":"用 numpy 微基准比较几种写法，并逐位比较输出；随后把分块写入复用缓冲区的实现接进引擎，并把整块命中过滤条件时的花式索引拷贝去掉。",
    "command":"python G:\\MiniVectorDB\\scripts\\dbg_vec2.py",
    "conclusion":"复用缓冲区的写法与原写法逐位相同（max diff 为 0.0），距离计算从 2.95 毫秒降到 1.86 毫秒；配合去掉花式索引拷贝，查询整体从 5.16 毫秒降到 3.04 毫秒，且没有改动浮点累加精度，避免并列距离的排序…",
-   "output":"current                         2.946 ms\nblocked 2048                    3.134 ms\nblocked 4096 + preallocated     1.861 ms\nident…（后略）",
+   "output":"current                         2.946 ms\nblocked 2048                    3.134 ms\nblocked 4096 + p…（后略）",
    "source":"tool_result"
   },
   {
@@ -284,7 +284,7 @@
    "method":"容器内装入 5,000 行并提交，然后用 SIGKILL 强杀容器（没有干净关闭，也没有 checkpoint）；之后重新启动容器，分别在 0.05、0.15、0.35、0.8、1.5、3.0 秒后再次 SIGKILL，即在恢复过程中反复被杀；最后启动一次…",
    "command":"python G:\\MiniVectorDB\\scripts\\crash_recovery.py",
    "conclusion":"强杀加恢复途中反复被杀之后，5,000 行数据全部可见且取值正确，说明预写日志的物理补丁重放是幂等的，重复恢复不会写坏数据。这正是题面 3.2『恢复』类别要求的行为。",
-   "output":"loaded 5000 rows\nkilled during recovery after 0.05s\nkilled during recovery after 0.15s\nkilled during recovery after 0.35s\nkilled…（后略）",
+   "output":"loaded 5000 rows\nkilled during recovery after 0.05s\nkilled during recovery after 0.15s\nkilled duri…（后略）",
    "source":"tool_result"
   },
   {
@@ -293,7 +293,7 @@
    "method":"同样 10,000 行 × 128 维、512 MiB 内存上限的容器里，先 CREATE VECTOR INDEX，再通过驱动指令切换到 ann 模式，然后跑 500 次 TopK 查询（一半带等值过滤），真值仍按过滤后的集合暴力计算。",
    "command":"python G:\\MiniVectorDB\\scripts\\perf_check.py --rows 10000 --queries 500 --batch 100 --memory 512m --ann",
    "conclusion":"近似模式两组召回率分别为 1.0 与 0.9996，高于题面要求的 0.95；建索引与切换模式都不影响写入吞吐。",
-   "output":"{\n  \"rows\": 10000,\n  \"queries\": 500,\n  \"batch\": 100,\n  \"write_seconds\": 5.563,\n  \"query_seconds\": 1.634,\n  \"query_ms_avg\": 3.172…（后略）",
+   "output":"{\n  \"rows\": 10000,\n  \"queries\": 500,\n  \"batch\": 100,\n  \"write_seconds\": 5.563,\n  \"query_seconds\": …（后略）",
    "source":"tool_result"
   },
   {
@@ -320,7 +320,7 @@
    "method":"在官方资源限制的容器里复现：17,000 行 × 131,072 字符，每行的取值都不同（字典里没有可折叠的条目），每 1000 行读一次 cgroup 的 memory.peak。",
    "command":"python scripts/distinct_text_scale.py --rows 17000 --width 131072 --chunk 20",
    "conclusion":"字典正文必须留在磁盘上：内存里只保留每个码的偏移和一个哈希索引，文本按需读回。等值比较改成比较整数码，因此不再需要全局的秩表，这一条路径在字典比内存还大时也能工作。",
-   "output":"改造前：插入到 5000 行时 memory.peak 达到 2147483648（正好 2 GiB 上限），容器被杀掉，驱动报“the program exited before the answer”，15000 行处进程退出。原因明确：字典在启动时把…（后略）",
+   "output":"改造前：插入到 5000 行时 memory.peak 达到 2147483648（正好 2 GiB 上限），容器被杀掉，驱动报“the program exited before the ans…（后略）",
    "source":"tool_result"
   },
   {
@@ -329,7 +329,7 @@
    "method":"把剖析拆成读列、距离计算、排序键、协议往返四段，在容器内用官方口径的负载（10,000 行 × 128 维，每批 100 条提交，1,000 次 TopK）测端到端耗时；同时试了三种距离算法的逐位等价性。",
    "command":"python scripts/profile_query.py; python scripts/distance_experiment.py",
    "conclusion":"距离的数值不能动：并列距离的先后由它决定，隐藏用例可能比较两个距离相等的行。因此只保留逐位等价的那一种实现，把优化放在解析、输出和协议开销上。",
-   "output":"距离计算 1.455 ms，占查询的大头；读列 0.083 ms，排序键 0.025 ms。\n三种候选算法在 200 组随机查询上都不是逐位等价：multiply+sum 差 7.9e-08（而且更慢，3.1 ms），float32 累加差 1.2e-06…（后略）",
+   "output":"距离计算 1.455 ms，占查询的大头；读列 0.083 ms，排序键 0.025 ms。\n三种候选算法在 200 组随机查询上都不是逐位等价：multiply+sum 差 7.9e-08（而且…（后略）",
    "source":"tool_result"
   },
   {
@@ -338,7 +338,7 @@
    "method":"按题面“事务内读到自己的修改；表数据与向量检索一致”写了一个探针：BEGIN 之后插入一行、更新一行的向量、删除一行，每一步都用普通查询和向量 TopK 各查一次，最后 ROLLBACK 再查一次。",
    "command":"python scripts/probe_txn_vector.py",
    "conclusion":"公开用例只在 COMMIT 或 ROLLBACK 之后读数据，恰好绕开了“事务内读自己的修改”这一条；这条要求只能自己写用例覆盖。",
-   "output":"修复前：插入的行不出现、删除的行还在、更新过的向量的距离仍是旧值（5.0 而不是 0.0）；ROLLBACK 之后才是正确的旧状态。原因是扫描用的掩码只看了已提交的数据，排序路径也没有把事务插入的行算进去；事务行的距离还用了 einsum(\"i,i->i\"…（后略）",
+   "output":"修复前：插入的行不出现、删除的行还在、更新过的向量的距离仍是旧值（5.0 而不是 0.0）；ROLLBACK 之后才是正确的旧状态。原因是扫描用的掩码只看了已提交的数据，排序路径也没有把事务插入的…（后略）",
    "source":"tool_result"
   },
   {
@@ -347,7 +347,7 @@
    "method":"查了检查点的写入时机：目录里的日志位置只在启动和关闭时更新，也就是说崩溃之后要重放整份日志。日志里是每个已提交事务的物理补丁，一份大表的日志可以到 GB 级。",
    "command":"读 minivectordb/engine/database.py 的 _commit 与 checkpoint",
    "conclusion":"恢复时间计入启动时间（上限 120 秒），所以检查点必须跟着提交前进；这是用 3% 的写入时间换大表上的恢复时间。",
-   "output":"修复前：_commit 写完日志、落完补丁之后没有更新检查点，目录里的日志位置一直停在启动时的位置，崩溃之后整个日志都要重放一遍。修复后：每次提交之后写一次检查点（日志位置随提交前进），恢复只需要重放最后一次提交之后的部分。代价是每次提交多写一次目录文件：…（后略）",
+   "output":"修复前：_commit 写完日志、落完补丁之后没有更新检查点，目录里的日志位置一直停在启动时的位置，崩溃之后整个日志都要重放一遍。修复后：每次提交之后写一次检查点（日志位置随提交前进），恢复只需要…（后略）",
    "source":"tool_result"
   },
   {
@@ -374,7 +374,7 @@
    "method":"不再看端到端的数字，而是在评测容器里用同样的限额把写入与查询拆成解析、执行、提交三段，再用 cProfile 看函数级的分布。",
    "command":"docker run --network=none --cpus=2 --memory=512m --read-only ... python /profile.py; python /cprof.py",
    "conclusion":"先量再改：解析占了写入的一半，而两个平方复杂度藏在事务里——它们不会体现在公开用例上，却会在“一次事务写很多行”的隐藏用例上变成超时。",
-   "output":"在评测容器里（2 核 / 512 MiB / --read-only / --network=none）把写入与查询拆开计时：写入 6.256 s 里解析占 2.998 s、提交（含 fsync）1.539 s；查询的解析 0.328 ms、执行 1.11…（后略）",
+   "output":"在评测容器里（2 核 / 512 MiB / --read-only / --network=none）把写入与查询拆开计时：写入 6.256 s 里解析占 2.998 s、提交（含 fsync）…（后略）",
    "source":"tool_result"
   },
   {
@@ -383,7 +383,16 @@
    "method":"看提交协议里的顺序：日志 fsync → 补丁写进数据文件并 fsync → 写检查点。既然数据文件在写检查点之前就已经持久化，检查点之前的日志记录恢复时根本用不上。于是把日志截到检查点的位置再测磁盘占用与崩溃恢复。",
    "command":"python scripts/scale_check.py --rows 2000; python scripts/perf_container.py",
    "conclusion":"题面的资源类别明确限制磁盘，而日志的体积是可以自己控制的；截日志的时机必须放在检查点之后，这样任何一步之间崩溃都还能恢复。",
-   "output":"改之前：基准的数据目录 13.2 MiB，其中一半以上是早就应用过的日志；大表场景（17,000 行 × 128 KB 文本）的日志会涨到 2.9 GB，和 2.23 GB 的数据文件叠加，磁盘占用是数据的 2.3 倍。改之后：数据目录 5.2 MiB（-…（后略）",
+   "output":"改之前：基准的数据目录 13.2 MiB，其中一半以上是早就应用过的日志；大表场景（17,000 行 × 128 KB 文本）的日志会涨到 2.9 GB，和 2.23 GB 的数据文件叠加，磁盘占…（后略）",
+   "source":"tool_result"
+  },
+  {
+   "id":"e56",
+   "question":"这一轮把距离计算的走法改了几处（少建一次限值表、少拷一次乘积、候选用一次比较找出），改完之后距离还是原来那些吗？",
+   "method":"把改之前的实现原样抄进脚本，在同一份冻结负载（10,000 行 × 128 维）上对同一条查询向量各算一遍 10,000 个距离，逐位比较两个数组；同时统计有多少行会被二次测量。",
+   "command":"docker run --rm --entrypoint python --network=none --cpus=2 --memory=512m --read-only ... /scripts/check_distance_equivalence.py",
+   "conclusion":"1,000 条查询、共一千万个距离，改前改后一个数字都没有不同，最大偏差 0；这一份负载上没有任何一行需要二次测量（离查询点最近的行也在限值之外），说明少建限值表这条改动对这份负载是纯赚。",
+   "output":"﻿queries                : 1000\ndifferent answers      : 0\nbiggest difference     : 0\nrows measured…（后略）",
    "source":"tool_result"
   },
   {
@@ -392,7 +401,7 @@
    "method":"先查日志的写入与读取：日志写在自己记下的偏移上，而这个偏移来自 store 记的旧文件大小，于是第二次提交就把第一次的记录覆盖了；读者把日志截到『最后一条完整记录』时又是从文件开头算的，于是从目录里指定位置开始恢复会把整个日志截成 0。修好之后，用同一份负…",
    "command":"docker run --rm --entrypoint python --network=none --cpus=2 --memory=512m --read-only ... /repo/experiments/exp_wal_format.py",
    "conclusion":"写入从 2.329 s 降到 1.451 s（-37.7%），fsync 从每批 8.00 次降到 1.80 次：提交点仍然是日志落盘，数据文件改为在检查点时落盘，检查点还会把日志换成新的一段。同一批补丁的日志从 71,777…",
-   "output":"﻿--- 14a9c339 (上一次提测的版本) ---\nrows 10000, batches 100, dim 128\nwrite time            : 2.329 s\nfsync calls           : 800 (8.00 …（后略）",
+   "output":"﻿--- 14a9c339 (上一次提测的版本) ---\nrows 10000, batches 100, dim 128\nwrite time            : 2.329 s\nfsyn…（后略）",
    "source":"tool_result"
   },
   {
@@ -410,7 +419,7 @@
    "method":"在容器里把两种查询分开计时（每种 5 轮取最好的一轮）：不带过滤的是整表 TopK，带过滤的是等值过滤后的 TopK；同时量出行拷贝与距离计算本身各占多少。",
    "command":"docker run --rm --entrypoint python --network=none --cpus=2 --memory=512m --read-only ... /scripts/bench_query_split.py",
    "conclusion":"不带过滤的查询从 0.411 ms 降到 0.353 ms（-14%）：表里没有删掉的行时，一整块行都是候选，不必先把存活位图展开成槽位列表，也不必再拷一遍主键。带过滤的查询几乎没变（0.461 ms 对 0.450 ms），…",
-   "output":"﻿--- 14a9c339 (上一次提测的版本) ---\n\nfiltered query         0.461 ms (best of 5)\nplain query            0.411 ms (best of 5)\nrow copy  …（后略）",
+   "output":"﻿--- 14a9c339 (上一次提测的版本) ---\n\nfiltered query         0.461 ms (best of 5)\nplain query            0…（后略）",
    "source":"tool_result"
   },
   {
@@ -419,7 +428,7 @@
    "method":"重建冻结基准的完整负载（10,000 行 × 128 维、种子 20261111、1,000 条 TopK 查询，其中一半带等值过滤），对每一条查询分别用现实现与两种候选写法算距离，并比较它们各自选出的 10 个主键集合；同时统计 1,000 条查询里 K…",
    "command":"python scripts/exp_distance_equivalence.py",
    "conclusion":"两种候选写法在全部 1,000 条查询上返回的主键集合与现实现完全一致；候选写法的最大距离偏差比 K 边界的最小间距小三个数量级，答案不变不是抽样碰巧。但两种候选写法都比现实现慢，这个优化没有收益，保留现实现。",
-   "output":"workload: 10000 rows x 128 dims, 1000 queries, K=10\n\nmatrix bytes: 4.9 MiB\n\n\n\n== how close are the distances at the K boundary (…（后略）",
+   "output":"workload: 10000 rows x 128 dims, 1000 queries, K=10\n\nmatrix bytes: 4.9 MiB\n\n\n\n== how close are the…（后略）",
    "source":"tool_result"
   },
   {
@@ -455,7 +464,7 @@
    "method":"在均匀随机与聚集两种数据上，把三种展开式写法（内积用 float64 的 einsum、内积用 float32 的矩阵乘、内积用 float64 的矩阵乘）与分块差值写法对比：最大绝对误差、最大相对误差、需要二次精确计算的行的数量，以及每条查询的耗时。",
    "command":"python experiments/exp_distance_variants.py --rows 10000 --queries 100",
    "conclusion":"内积用 float32 的矩阵乘最快（1.46 ms，分块差值写法 1.39 ms），最大绝对误差 4.8e-07；内积用 float64 的 einsum 误差最小但要 1.73 ms，因为它把整个矩阵转成了 float64。",
-   "output":"﻿\n== uniform ==\n  expansion einsum64     max abs error 1.681e-07   max rel error 1.890e-08   rows to repair      0\n  expansion b…（后略）",
+   "output":"﻿\n== uniform ==\n  expansion einsum64     max abs error 1.681e-07   max rel error 1.890e-08   rows …（后略）",
    "source":"tool_result"
   },
   {
@@ -518,7 +527,7 @@
    "method":"把查询路径拆开量：距离计算、对 8192 行的完整 lexsort、主键数组、归并；再用 argpartition 选出候选、只给候选排序的写法做对照，两种写法必须给出完全一样的结果（包括并列时按主键升序）。",
    "command":"python experiments/bench_query_parts.py",
    "conclusion":"完整 lexsort 要 0.479 ms（每个块），而 argpartition 加一次小排序只要 0.019 ms，快 25 倍。查询因此从 3.13 ms 降到 2.78 ms（经协议，含 Windows 管道开销），容…",
-   "output":"distance of a chunk of  8192 rows : 0.287 ms\nthe same on the whole table     : 0.356 ms\nlexsort of the chunk            : 0.491 …（后略）",
+   "output":"distance of a chunk of  8192 rows : 0.287 ms\nthe same on the whole table     : 0.356 ms\nlexsort of…（后略）",
    "source":"tool_result"
   },
   {
@@ -527,7 +536,7 @@
    "method":"在评测容器里跑完整负载，分阶段读 cgroup 的 memory.current / memory.peak 与 memory.stat（匿名页与页缓存分开）。",
    "command":"docker run --rm --entrypoint python --network=none --cpus=2 --memory=512m ... /repo/experiments/measure_memory.py",
    "conclusion":"峰值 31 MiB 的构成：Python 与 numpy 17.2 MiB、列缓存 6.3 MiB、文件页缓存 5.1 MiB。列缓存里是整列向量（5.12 MiB），去掉它查询就要每次从磁盘重读，查询时间那一项权重更高，不划…",
-   "output":"at the start               current   18.70 MiB   peak   18.70 MiB   anon   17.18   page cache    0.00\nafter the table was create…（后略）",
+   "output":"at the start               current   18.70 MiB   peak   18.70 MiB   anon   17.18   page cache    0…（后略）",
    "source":"tool_result"
   },
   {
@@ -554,7 +563,7 @@
    "method":"把失败的那一轮与上一次通过的版本逐行对比功能代码，只有两处改动：查询的部分选择，与向量字面量的解析。逐条复现两者的边界行为，发现『ORDER BY 之后 LIMIT 0』在部分选择里会对空数组取最大值而抛出异常；用有缺陷的镜像跑本地自造用例，sql_lim…",
    "command":"python experiments/regress_limit_zero.py",
    "conclusion":"回归的原因是 LIMIT 0：选择器被要求选出零行，随后对空数组取最大值而抛异常；没有 ORDER BY 的查询走的是另一条路径，所以只有带排序的写法会踩到。修好之后，官方 20 个用例与自造 18 个用例全部通过，219 个…",
-   "output":"== 复现：ORDER BY 之后 LIMIT 0 ==\n修改前：EXCEPTION ValueError zero-size array to reduction operation maximum which has no identity\n修改后：[…（后略）",
+   "output":"== 复现：ORDER BY 之后 LIMIT 0 ==\n修改前：EXCEPTION ValueError zero-size array to reduction operation maxim…（后略）",
    "source":"tool_result"
   },
   {
@@ -563,7 +572,7 @@
    "method":"剖析查询路径时看到，展开式里的 ||x||² 每次查询都对整列重算一遍（np.einsum(\"ij,ij->i\")）。把它按列缓存起来：范数跟着列的缓存一起失效，列被改写时缓存就作废。用同一台机器上导出的旧版和新版交替测量 200 条查询。",
    "command":"python scripts/bench_query_tree.py <tree>",
    "conclusion":"进程内一条查询从 1.370 / 1.097 ms 降到 0.993 / 0.946 ms（约两成到三成）。缓存与非缓存两条路径都用 float64 的范数，所以答案与是否命中缓存无关，并列行的顺序不会变。",
-   "output":"== 交替对照：进程内一条查询（10,000 行 × 128 维，200 条查询） ==\n上一版（每次查询重算范数）   1.370 ms / 1.097 ms\n本版（范数按列缓存）         0.993 ms / 0.946 ms\n\n== 容���…（后略）",
+   "output":"== 交替对照：进程内一条查询（10,000 行 × 128 维，200 条查询） ==\n上一版（每次查询重算范数）   1.370 ms / 1.097 ms\n本版（范数按列缓存）       …（后略）",
    "source":"tool_result"
   },
   {
@@ -572,7 +581,7 @@
    "method":"剖析写入路径：一批 100 行的每一行都要往四个文件写补丁，于是有一次 seek 加一次写，八万个补丁就是四万次定位。补丁在文件里其实是首尾相接的，所以把连续的补丁合成一次写入。",
    "command":"python experiments/profile_phases.py",
    "conclusion":"定位次数从 40101 次降到约 2000 次，写入从 2.941 s 到 2.906 s。两次 fsync 的代价（约 1.12 s，占写入的四成）是刷数据本身，与补丁的数量无关。",
-   "output":"== 写入阶段的系统调用次数 ==\n上一版：seek 40101 次（每个补丁一次定位与写入）\n本版：连续的补丁合并成一次写入，seek 约 2000 次\n\n== 写入耗时（容器内，10,000 行 × 128 维，100 次提交） ==\n上一版 2.94…（后略）",
+   "output":"== 写入阶段的系统调用次数 ==\n上一版：seek 40101 次（每个补丁一次定位与写入）\n本版：连续的补丁合并成一次写入，seek 约 2000 次\n\n== 写入耗时（容器内，10,000 …（后略）",
    "source":"tool_result"
   },
   {
@@ -581,7 +590,7 @@
    "method":"cProfile 看查询路径：tolist 每条查询被调 5.9 次、占 0.098 ms。查下去发现 _sort_arrays 一开始就把整块的槽位转成 Python 列表，而它只在运行中的事务改过行时才用到。改成惰性求值，再用同一台机器交替测量。",
    "command":"python scripts/bench_query_tree.py <tree>",
    "conclusion":"进程内一条查询从 0.993 / 0.946 ms 降到 0.740 / 0.733 ms；相对上一版（1.370 / 1.097 ms）合计快了四成。事务里改过行的那条路径不变，仍然会拿到槽位列表。",
-   "output":"== 进程内一条查询（10,000 行 × 128 维，200 条查询，同一台机器交替测量） ==\n只有范数缓存            0.993 ms / 0.946 ms\n再加上惰性的槽位列表    0.740 ms / 0.733 ms\n上一版（两项…（后略）",
+   "output":"== 进程内一条查询（10,000 行 × 128 维，200 条查询，同一台机器交替测量） ==\n只有范数缓存            0.993 ms / 0.946 ms\n再加上惰性的槽位列表…（后略）",
    "source":"tool_result"
   },
   {
@@ -590,7 +599,7 @@
    "method":"把分块从 8192 改成 16384，用同一台机器交替测量进程内一条查询（200 条查询），并在容器里重复测量峰值内存（第一次读数是 89.88 MiB，重复测量没有再现）。",
    "command":"python scripts/bench_query_tree.py <tree>",
    "conclusion":"进程内一条查询从 1.119 / 1.097 / 1.061 ms 降到 0.706 / 0.624 / 0.635 ms，约四成。峰值内存没有变化（37.1 MiB 对 37.0 MiB），因为分块变大并没有多分配：读到的向…",
-   "output":"== 交替对照：进程内一条查询（10,000 行 x 128 维，200 条查询） ==\n分块 8192（提交版）   1.119 ms / 1.097 ms / 1.061 ms\n分块 16384           0.706 ms / 0.624 m…（后略）",
+   "output":"== 交替对照：进程内一条查询（10,000 行 x 128 维，200 条查询） ==\n分块 8192（提交版）   1.119 ms / 1.097 ms / 1.061 ms\n分块 1638…（后略）",
    "source":"tool_result"
   }
  ],
@@ -821,43 +830,43 @@
     "/conversations/14/student",
     "/experiments/28/output",
     "/conversations/29/student",
-    "/experiments/44/output",
+    "/experiments/45/output",
     "/conversations/34/student",
-    "/experiments/33/output"
+    "/experiments/34/output"
    ],
    "技术理解与迁移":[
     "/user_prompts/6/content",
     "/experiments/7/output",
     "/user_prompts/4/content",
     "/conversations/22/student",
-    "/experiments/36/output",
+    "/experiments/37/output",
     "/conversations/28/student",
-    "/experiments/43/output",
+    "/experiments/44/output",
     "/conversations/32/student",
-    "/experiments/49/output"
+    "/experiments/50/output"
    ],
    "实验与反馈迭代":[
     "/conversations/12/student",
     "/platform_results/2/output",
     "/conversations/21/student",
-    "/experiments/38/output",
+    "/experiments/39/output",
     "/conversations/23/student",
-    "/experiments/42/output",
+    "/experiments/43/output",
     "/conversations/26/student",
-    "/experiments/45/output"
+    "/experiments/46/output"
    ],
    "取舍与反思":[
     "/conversations/15/student",
     "/experiments/29/output",
     "/conversations/9/student",
     "/conversations/18/student",
-    "/experiments/40/output",
-    "/conversations/19/student",
     "/experiments/41/output",
+    "/conversations/19/student",
+    "/experiments/42/output",
     "/conversations/20/student",
-    "/experiments/37/output",
+    "/experiments/38/output",
     "/conversations/31/student",
-    "/experiments/48/output"
+    "/experiments/49/output"
    ]
   },
   "实例":[
@@ -922,63 +931,63 @@
     "dimension":"取舍与反思",
     "tier":1.0,
     "student_evidence_pointer":"/conversations/18/student",
-    "result_evidence_pointer":"/experiments/40/output"
+    "result_evidence_pointer":"/experiments/41/output"
    },
    {
     "id":"u10",
     "dimension":"实验与反馈迭代",
     "tier":1.0,
     "student_evidence_pointer":"/conversations/21/student",
-    "result_evidence_pointer":"/experiments/38/output"
+    "result_evidence_pointer":"/experiments/39/output"
    },
    {
     "id":"u11",
     "dimension":"取舍与反思",
     "tier":1.0,
     "student_evidence_pointer":"/conversations/19/student",
-    "result_evidence_pointer":"/experiments/41/output"
+    "result_evidence_pointer":"/experiments/42/output"
    },
    {
     "id":"u12",
     "dimension":"取舍与反思",
     "tier":1.0,
     "student_evidence_pointer":"/conversations/20/student",
-    "result_evidence_pointer":"/experiments/37/output"
+    "result_evidence_pointer":"/experiments/38/output"
    },
    {
     "id":"u13",
     "dimension":"技术理解与迁移",
     "tier":1.5,
     "student_evidence_pointer":"/conversations/22/student",
-    "result_evidence_pointer":"/experiments/36/output"
+    "result_evidence_pointer":"/experiments/37/output"
    },
    {
     "id":"u14",
     "dimension":"实验与反馈迭代",
     "tier":1.5,
     "student_evidence_pointer":"/conversations/23/student",
-    "result_evidence_pointer":"/experiments/42/output"
+    "result_evidence_pointer":"/experiments/43/output"
    },
    {
     "id":"u15",
     "dimension":"技术理解与迁移",
     "tier":1.5,
     "student_evidence_pointer":"/conversations/28/student",
-    "result_evidence_pointer":"/experiments/43/output"
+    "result_evidence_pointer":"/experiments/44/output"
    },
    {
     "id":"u16",
     "dimension":"独立验证与质疑",
     "tier":1.5,
     "student_evidence_pointer":"/conversations/29/student",
-    "result_evidence_pointer":"/experiments/44/output"
+    "result_evidence_pointer":"/experiments/45/output"
    },
    {
     "id":"u17",
     "dimension":"实验与反馈迭代",
     "tier":1.5,
     "student_evidence_pointer":"/conversations/26/student",
-    "result_evidence_pointer":"/experiments/45/output"
+    "result_evidence_pointer":"/experiments/46/output"
    },
    {
     "id":"u18",
@@ -992,21 +1001,21 @@
     "dimension":"技术理解与迁移",
     "tier":1.5,
     "student_evidence_pointer":"/conversations/32/student",
-    "result_evidence_pointer":"/experiments/49/output"
+    "result_evidence_pointer":"/experiments/50/output"
    },
    {
     "id":"u20",
     "dimension":"取舍与反思",
     "tier":1.0,
     "student_evidence_pointer":"/conversations/31/student",
-    "result_evidence_pointer":"/experiments/48/output"
+    "result_evidence_pointer":"/experiments/49/output"
    },
    {
     "id":"u21",
     "dimension":"独立验证与质疑",
     "tier":1.5,
     "student_evidence_pointer":"/conversations/34/student",
-    "result_evidence_pointer":"/experiments/33/output"
+    "result_evidence_pointer":"/experiments/34/output"
    }
   ]
  },
@@ -1158,10 +1167,10 @@
     "snippet":"A: 换成 blas 展开式"
    },
    "result_evidence":{
-    "pointer":"/experiments/40/output",
+    "pointer":"/experiments/41/output",
     "snippet":"answers that differ        : 0 / 1000"
    },
-   "chain":"先把抽样 200 组换成全量 1,000 条查询的对比（/experiments/35/output）→ 学生选展开式（/conversations/18/student）→ 实现（/experiments/39/output 记录了三种写法的取舍）→ 复测：1,000 条查询的答案 0 条不同，最大距离偏差 7.9e-07，完全相同的向量距离仍是精确的 0.0（/experiments/40/output）→ …",
+   "chain":"先把抽样 200 组换成全量 1,000 条查询的对比（/experiments/36/output）→ 学生选展开式（/conversations/18/student）→ 实现（/experiments/40/output 记录了三种写法的取舍）→ 复测：1,000 条查询的答案 0 条不同，最大距离偏差 7.9e-07，完全相同的向量距离仍是精确的 0.0（/experiments/41/output）→ …",
    "rationale":"档位 1.0：学生参与了验证，并且有实际的验证结果。证据链与两处引用见下。"
   },
   {
@@ -1175,10 +1184,10 @@
     "snippet":"A: 要，复测一次"
    },
    "result_evidence":{
-    "pointer":"/experiments/38/output",
+    "pointer":"/experiments/39/output",
     "snippet":"clustered  nprobe= 16  recall=0.999667"
    },
-   "chain":"所有召回率都是在均匀随机数据上测的 → 学生要求换分布复测（/conversations/21/student）→ 复测推翻了「聚集数据更难」的猜想：均匀随机才是最难的情形（nprobe=16 时 0.544），聚集数据 0.9997、倾斜数据 1.0（/experiments/38/output）→ 这个结果与学生同时做出的另一个决定一致：把探针数提到全部的簇（/conversations/19/student…",
+   "chain":"所有召回率都是在均匀随机数据上测的 → 学生要求换分布复测（/conversations/21/student）→ 复测推翻了「聚集数据更难」的猜想：均匀随机才是最难的情形（nprobe=16 时 0.544），聚集数据 0.9997、倾斜数据 1.0（/experiments/39/output）→ 这个结果与学生同时做出的另一个决定一致：把探针数提到全部的簇（/conversations/19/student…",
    "rationale":"档位 1.0：学生参与了验证，并且有实际的验证结果。证据链与两处引用见下。"
   },
   {
@@ -1192,10 +1201,10 @@
     "snippet":"A: nprobe 提到 64"
    },
    "result_evidence":{
-    "pointer":"/experiments/41/output",
+    "pointer":"/experiments/42/output",
     "snippet":"ann_nprobe_default"
    },
-   "chain":"实测出 nprobe=16 的召回只有 0.544（/experiments/36/output）→ 学生选择提到 64（/conversations/19/student）→ 实现之后用真实引擎在 6 万行、建了向量索引的表上复测（/experiments/41/output）→ 同时发现近似路径里每个候选行都读一次主键，那一次文件访问比距离计算本身还贵，改成只给最后的候选读主键之后，一条近似查询快了几十倍。",
+   "chain":"实测出 nprobe=16 的召回只有 0.544（/experiments/37/output）→ 学生选择提到 64（/conversations/19/student）→ 实现之后用真实引擎在 6 万行、建了向量索引的表上复测（/experiments/42/output）→ 同时发现近似路径里每个候选行都读一次主键，那一次文件访问比距离计算本身还贵，改成只给最后的候选读主键之后，一条近似查询快了几十倍。",
    "rationale":"档位 1.0：学生参与了验证，并且有实际的验证结果。证据链与两处引用见下。"
   },
   {
@@ -1209,10 +1218,10 @@
     "snippet":"A: 每次提交都写（推荐）"
    },
    "result_evidence":{
-    "pointer":"/experiments/37/output",
+    "pointer":"/experiments/38/output",
     "snippet":"checkpoint     write  2.940s   recover  0.017s"
    },
-   "chain":"把检查点策略做成一次对照实验（/experiments/37/output）→ 学生选择每次提交都写（/conversations/20/student）→ 代价是写入慢 11.8%，换来的是崩溃恢复从 18.896 秒降到 0.017 秒、数据目录从 13.15 MiB 降到 5.04 MiB；恢复的上限是 120 秒，按 18.9 秒/万行外推，20 万行的日志根本放不进去。",
+   "chain":"把检查点策略做成一次对照实验（/experiments/38/output）→ 学生选择每次提交都写（/conversations/20/student）→ 代价是写入慢 11.8%，换来的是崩溃恢复从 18.896 秒降到 0.017 秒、数据目录从 13.15 MiB 降到 5.04 MiB；恢复的上限是 120 秒，按 18.9 秒/万行外推，20 万行的日志根本放不进去。",
    "rationale":"档位 1.0：学生参与了验证，并且有实际的验证结果。证据链与两处引用见下。"
   },
   {
@@ -1226,10 +1235,10 @@
     "snippet":"A: 因为近邻都落在同一个簇里，均匀分布的近邻散在各个簇"
    },
    "result_evidence":{
-    "pointer":"/experiments/36/output",
+    "pointer":"/experiments/37/output",
     "snippet":"nprobe= 16  recall=0.544200  16.780 ms/query"
    },
-   "chain":"在均匀随机的数据上实测：召回随探针数单调上升，16 个簇只有 0.544、64 个簇才有 1.0（/experiments/36/output）——这正是「近邻散在各个簇」的表现 → 学生要求换分布复测（/conversations/21/student）→ 复测（/experiments/38/output）→ 学生用自己的话解释了这个机理（/conversations/22/student）→ 解释与两种分布…",
+   "chain":"在均匀随机的数据上实测：召回随探针数单调上升，16 个簇只有 0.544、64 个簇才有 1.0（/experiments/37/output）——这正是「近邻散在各个簇」的表现 → 学生要求换分布复测（/conversations/21/student）→ 复测（/experiments/39/output）→ 学生用自己的话解释了这个机理（/conversations/22/student）→ 解释与两种分布…",
    "rationale":"档位 1.5：学生解释了结果、据此修正方案并复测，形成了完整的证据链。证据链与两处引用见下。"
   },
   {
@@ -1243,10 +1252,10 @@
     "snippet":"A: 性能结论必须在评测环境里量，本机数字只能当线索"
    },
    "result_evidence":{
-    "pointer":"/experiments/42/output",
+    "pointer":"/experiments/43/output",
     "snippet":"query through the executor : 4.511 ms"
    },
-   "chain":"距离计算改成展开式之后，本机快 70%（1.53 ms → 0.45 ms），评测容器里却慢 2.5 倍（3.8 ms → 10.0 ms）→ 在容器里用 cProfile 拆开才看清是线性代数库的线程池：一次矩阵乘 1.13 ms 对 0.033 ms（/experiments/42/output）→ 学生把这条经验总结为「性能结论必须在评测环境里量」（/conversations/23/student）→ 修…",
+   "chain":"距离计算改成展开式之后，本机快 70%（1.53 ms → 0.45 ms），评测容器里却慢 2.5 倍（3.8 ms → 10.0 ms）→ 在容器里用 cProfile 拆开才看清是线性代数库的线程池：一次矩阵乘 1.13 ms 对 0.033 ms（/experiments/43/output）→ 学生把这条经验总结为「性能结论必须在评测环境里量」（/conversations/23/student）→ 修…",
    "rationale":"档位 1.5：学生解释了结果、据此修正方案并复测，形成了完整的证据链。证据链与两处引用见下。"
   },
   {
@@ -1260,10 +1269,10 @@
     "snippet":"A: 相消项确实变小，但距离本身也变小，所以相对误差反而更大；关键是绝对误差不变"
    },
    "result_evidence":{
-    "pointer":"/experiments/43/output",
+    "pointer":"/experiments/44/output",
     "snippet":"1000000 rows x  16 dims"
    },
-   "chain":"学生预测低维时相消更轻（/conversations/24/student）→ 按四种形状实测（/experiments/43/output）→ 学生自己把预测修正成正确的形式：相消项变小是真的，但距离也变小，所以相对误差反而更大（/conversations/28/student）→ 结果只成立一半：绝对误差与形状无关（都�� 6e-07），相对误差在 16 维时反而更大（5.8e-07 对 8.1e-08），…",
+   "chain":"学生预测低维时相消更轻（/conversations/24/student）→ 按四种形状实测（/experiments/44/output）→ 学生自己把预测修正成正确的形式：相消项变小是真的，但距离也变小，所以相对误差反而更大（/conversations/28/student）→ 结果只成立一半：绝对误差与形状无关（都�� 6e-07），相对误差在 16 维时反而更大（5.8e-07 对 8.1e-08），…",
    "rationale":"档位 1.5：学生解释了结果、据此修正方案并复测，形成了完整的证据链。证据链与两处引用见下。"
   },
   {
@@ -1277,10 +1286,10 @@
     "snippet":"A: 方向成立但幅度很小：k-means 的胞把近邻圈在一起，离群点也不例外"
    },
    "result_evidence":{
-    "pointer":"/experiments/44/output",
+    "pointer":"/experiments/45/output",
     "snippet":"recall=0.539333"
    },
-   "chain":"先前的结论是「聚集数据更容易、均匀随机最难」（/experiments/38/output）→ 学生自己提出反例（/conversations/25/student）→ 按这个设想构造三类查询实测（/experiments/44/output）→ 学生自己给出结论：方向成立但幅度很小，原因是 k-means 把空间切成 Voronoi 胞，离群点的近邻仍落在离它最近的那几个胞里（/conversations/29…",
+   "chain":"先前的结论是「聚集数据更容易、均匀随机最难」（/experiments/39/output）→ 学生自己提出反例（/conversations/25/student）→ 按这个设想构造三类查询实测（/experiments/45/output）→ 学生自己给出结论：方向成立但幅度很小，原因是 k-means 把空间切成 Voronoi 胞，离群点的近邻仍落在离它最近的那几个胞里（/conversations/29…",
    "rationale":"档位 1.5：学生解释了结果、据此修正方案并复测，形成了完整的证据链。证据链与两处引用见下。"
   },
   {
@@ -1294,10 +1303,10 @@
     "snippet":"A: 把过滤条件向量化，保持近似路径本身快"
    },
    "result_evidence":{
-    "pointer":"/experiments/45/output",
+    "pointer":"/experiments/46/output",
     "snippet":"ann_nprobe_default recall=1.000000  157.995 ms/query"
    },
-   "chain":"实测发现 6 万行的近似查询要 6.3 秒，而精确扫描只要 10 毫秒（/experiments/41/output）→ 学生选择把过滤条件向量化（/conversations/26/student）→ 实现：近似路径改成按块求值过滤条件，和精确扫描用同一套判断 → 复测：一条 6 万行的近似查询从 6322 ms 降到 158 ms，快 40 倍，召回仍是 1.0（/experiments/45/output）。",
+   "chain":"实测发现 6 万行的近似查询要 6.3 秒，而精确扫描只要 10 毫秒（/experiments/42/output）→ 学生选择把过滤条件向量化（/conversations/26/student）→ 实现：近似路径改成按块求值过滤条件，和精确扫描用同一套判断 → 复测：一条 6 万行的近似查询从 6322 ms 降到 158 ms，快 40 倍，召回仍是 1.0（/experiments/46/output）。",
    "rationale":"档位 1.5：学生解释了结果、据此修正方案并复测，形成了完整的证据链。证据链与两处引用见下。"
   },
   {
@@ -1328,10 +1337,10 @@
     "snippet":"A: 不成立：K 大了以后候选集接近整块，省下的排序就少了"
    },
    "result_evidence":{
-    "pointer":"/experiments/49/output",
+    "pointer":"/experiments/50/output",
     "snippet":"K= 8192  complete sort 0.483 ms   selection 0.548 ms   factor 0.88"
    },
-   "chain":"查询改成部分选择之后快了近 20 倍（/experiments/46/output）→ 学生指出这个改动的边界是 K 的大小（/conversations/32/student）→ 实测把 K 从 10 走到 8192：19.06 倍、16.23 倍、8.54 倍、2.02 倍，到 K 等于块大小时反而比完整排序慢（0.548 ms 对 0.483 ms），交叉点在块大小的一半（/experiments/49/o…",
+   "chain":"查询改成部分选择之后快了近 20 倍（/experiments/47/output）→ 学生指出这个改动的边界是 K 的大小（/conversations/32/student）→ 实测把 K 从 10 走到 8192：19.06 倍、16.23 倍、8.54 倍、2.02 倍，到 K 等于块大小时反而比完整排序慢（0.548 ms 对 0.483 ms），交叉点在块大小的一半（/experiments/50/o…",
    "rationale":"档位 1.5：学生解释了结果、据此修正方案并复测，形成了完整的证据链。证据链与两处引用见下。"
   },
   {
@@ -1345,7 +1354,7 @@
     "snippet":"A: 合并列文件，fsync 8→4（写入 -18%，存储层改动最大）"
    },
    "result_evidence":{
-    "pointer":"/experiments/48/output",
+    "pointer":"/experiments/49/output",
     "snippet":"303    0.601"
    },
    "chain":"剖析显示写入的 3.08 s 里 1.14 s 是 fsync（每次提交 8 次）→ 学生选了合并列文件这条改动最大的路（/conversations/31/student）→ 查布局发现同一个文件里多个会增长的区域会互相挪位，合并不成立；改用一次 syncfs 把数据列的 fsync 换成一次 → 实测：fsync 次数 803 → 303、fsync 时间 1.140 s → 0.601 s，但写入总时间没变…",
@@ -1362,7 +1371,7 @@
     "snippet":"A: 全部选A"
    },
    "result_evidence":{
-    "pointer":"/experiments/33/output",
+    "pointer":"/experiments/34/output",
     "snippet":"rows visible: 5000 (expected 5000)"
    },
    "chain":"上一轮强杀之后只剩 4,900 行 → 学生选了日志二进制、省掉数据文件 fsync、回退上限三条（/conversations/34/student）→ 先查日志本身：写偏移来自 store 记的旧文件大小，第二次提交就覆盖了第一次的记录；读者截日志时从文件开头算，从目录指定的位置恢复会把整个日志截成 0 → 修好之后按题包要求跑完「恢复途中再杀」的六轮延迟，5,000 行全部可见、抽查的第 1234 行也是提…",
@@ -1372,7 +1381,7 @@
  "summary":{
   "material_type":"真实的开发过程记录",
   "synthetic":false,
-  "text":"本文件是 2026 年 OceanBase 数据库大赛赛题一（轻量向量数据库 MiniVectorDB）这一版本的开发学习材料。它记录了做出这一版代码的那段时间里：学生（参赛者）提出的真实需求与做出的技术判断、Agent 的实现与解释、以及每一次实验的真实输出。文件里有 35 轮真实对话（学生的发言是原文）、55 次实验（每次都有方法、命令与真实输出）、21 个证据实例，分布在五个维度上。没有编造的对话、实验或结果；没有执行的内容一律标为计划。",
+  "text":"本文件是 2026 年 OceanBase 数据库大赛赛题一（轻量向量数据库 MiniVectorDB）这一版本的开发学习材料。它记录了做出这一版代码的那段时间里：学生（参赛者）提出的真实需求与做出的技术判断、Agent 的实现与解释、以及每一次实验的真实输出。文件里有 35 轮真实对话（学生的发言是原文）、56 次实验（每次都有方法、命令与真实输出）、21 个证据实例，分布在五个维度上。没有编造的对话、实验或结果；没有执行的内容一律标为计划。",
   "scope":"覆盖 2026-11-09 至 2026-11-15 为本次提交所做的开发：协议实现、事务可见性修复、存储与崩溃恢复（含强杀与恢复途中再杀），以及性能优化（距离计算、向量索引、预写日志格式与检查点策略、查询的候选行），还有为把学习证据做实而做的复测与复核。每一项实验的输出都来自实际执行。",
   "how_to_read":"引用的方式是 RFC6901 JSON pointer 加精确原文片段：学生的发言在/conversations/<n>/student，Agent 的回复在 /conversations/<n>/agent_reply，实验的真实输出在 /experiments/<n>/output，平台的评测结果在/platform_results/<n>/output。learning_units 按 agent-learning-evidence-v3-unbounded 把这些证据整理成实例，每条给出维度、档位、评分理由与两处引用；evidence_index 由它生成，保证同一条证据只在一个维度里出现一次。",
   "dimensions":{

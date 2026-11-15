@@ -23,7 +23,7 @@ from ..errors import (
 )
 from .storage import FileStore, WriteSet
 
-CHUNK_ROWS = 8192
+CHUNK_ROWS = 16384
 
 #: Upper bound for the in-memory column cache.  Columns are only cached when
 #: they fit into the budget, so that a table that is larger than the memory

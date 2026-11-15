@@ -938,7 +938,11 @@ class Executor:
         ascending order of the negated values is the requested order.
         """
         arrays: List[np.ndarray] = []
-        slot_list = slots.tolist()
+        # The list of the slots is only needed when the running transaction
+        # changed some of the rows, so it is not built for the usual case:
+        # turning thousands of slots into Python objects costs more than the
+        # distance computation.
+        slot_list: Optional[List[int]] = None
         for kind, order_item, reference in specs:
             if kind == "column":
                 chunk = table.read_column(reference, start, count)
@@ -951,6 +955,8 @@ class Executor:
                 else:
                     values = values.astype(np.float64)
                 if overlay is not None and overlay.rows:
+                    if slot_list is None:
+                        slot_list = slots.tolist()
                     for index, slot in enumerate(slot_list):
                         override = overlay.rows.get(slot)
                         if override and reference.key in override:
@@ -986,6 +992,8 @@ class Executor:
                     # A row whose vector the transaction changed is measured
                     # with its new vector.
                     key = reference.column.key
+                    if slot_list is None:
+                        slot_list = slots.tolist()
                     for index, slot in enumerate(slot_list):
                         override = overlay.rows.get(slot)
                         if override and key in override:

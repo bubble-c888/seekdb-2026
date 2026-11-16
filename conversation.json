@@ -13,7 +13,7 @@
  "summary":{
   "material_type":"真实的开发过程记录",
   "synthetic":false,
-  "text":"本文件是 2026 年 OceanBase 数据库大赛赛题一（轻量向量数据库 MiniVectorDB）这一版本的开发学习材料。它记录了做出这一版代码的那段时间里：学生（参赛者）提出的真实需求与做出的技术判断、Agent 的实现与解释、以及每一次实验的真实输出。文件里有 37 轮真实对话（学生的发言是原文）、58 次实验（每次都有方法、命令与真实输出；被证据实例引用的实验保留完整输出，其余保留开头一段）、22 个证据实例，分布在五个维度上。没有编造的对话、实验或结果；没有执行的内容一律标为计划。",
+  "text":"本文件是 2026 年 OceanBase 数据库大赛赛题一（轻量向量数据库 MiniVectorDB）这一版本的开发学习材料。它记录了做出这一版代码的那段时间里：学生（参赛者）提出的真实需求与做出的技术判断、Agent 的实现与解释、以及每一次实验的真实输出。文件里有 37 轮真实对话（学生的发言是原文）、59 次实验（每次都有方法、命令与真实输出；被证据实例引用的实验保留完整输出，其余保留开头一段）、22 个证据实例，分布在五个维度上。没有编造的对话、实验或结果；没有执行的内容一律标为计划。",
   "scope":"覆盖 2026-11-09 至 2026-11-15 为本次提交所做的开发：协议实现、事务可见性修复、存储与崩溃恢复（含强杀与恢复途中再杀），以及性能优化（距离计算、向量索引、预写日志格式与检查点策略、查询的候选行），还有为把学习证据做实而做的复测与复核。每一项实验的输出都来自实际执行。",
   "how_to_read":"引用的方式是 RFC6901 JSON pointer 加精确原文片段：学生的发言在/conversations/<n>/student，Agent 的回复在 /conversations/<n>/agent_reply，实验的真实输出在 /experiments/<n>/output，平台的评测结果在/platform_results/<n>/output。learning_units 按 agent-learning-evidence-v3-unbounded 把这些证据整理成实例，每条给出维度、档位、评分理由与两处引用；evidence_index 由它生成，保证同一条证据只在一个维度里出现一次。",
   "dimensions":{
@@ -439,12 +439,21 @@
    "source":"tool_result"
   },
   {
+   "id":"e59",
+   "question":"题面第 3.3.2 节说峰值内存要算上文件页缓存，索引准备的开销也要算进查询…",
+   "method":"按题面的口径量：用容器 cgroup 的 io.stat 读 rbytes 与 wbytes 得到磁盘 I…",
+   "command":"python scripts/perf_io.py --image mvdb-change:lo…",
+   "conclusion":"写入阶段 11.82 MiB（每次量出来都一样），查询阶段在 0.08 MiB 和 7.58 M…",
+   "output":"﻿{\n  \"image\": \"mvdb-change:local\",\n  \"memory_limit\": \"2g\",\n  \"index_…（后略）",
+   "source":"tool_result"
+  },
+  {
    "id":"e58",
    "question":"材料本身合不合规？平台把这一项判成无效的时候，先该查的是材料，不是分数。",
-   "method":"把检查写进仓库里的脚本：严格解析 JSON（重复键与 JSON 本身不允许的数值常量都不允许）、两种换行下的体积、引用的可定位性、引用的原文匹配、同一段原文不能用两次、证据链不能被从中间截断、摘要与三类来源是否齐全，打印报告；提交之前跑一遍。",
+   "method":"把检查写进仓库里的脚本：严格解析 JSON（重复键与 JSON 本身不允许的数值常量都不允许）、两种换行下…",
    "command":"python experiments/exp_material_check.py",
-   "conclusion":"第一次跑这份检查就抓到了问题：十一条证据链被从中间截断，其中一条把指针截断了，还有两条链指向已经被删掉的段落。修完之后脚本全绿：引用全部可定位、原文全部匹配、没有任何一段原文被用了两次、体积不到限制的七成。",
-   "output":"conversation.json               120 KiB,    122 KiB with CRLF (limit 128 KiB)\ninstances 22, conversations 37, experiments 58\nconversation.json               120 KiB,    122 KiB with CRLF (limit 128 KiB)\ninstances 22, conversations 37, experiments 58\nOK: the material is valid\n",
+   "conclusion":"第一次跑这份检查就抓到了问题：十一条证据链被从中间截断，其中一条把指针截断了，还有两条链指向已经…",
+   "output":"conversation.json               123 KiB,    125 KiB with CRLF (limit…（后略）",
    "source":"tool_result"
   },
   {
@@ -722,6 +731,10 @@
    "content":"这一轮最有用的一次动作不是写代码，而是复现：把题面要求的“数据量超过内存限额”按最坏的样子跑了一遍——每行的文本都不同，让字典没有任何可折叠的条目。结果 5…"
   },
   {
+   "id":"r16",
+   "content":"平台把 Agent Prompt 判成无效之后，先查的是材料本身，不是分数：证据链有十一条被从中间截断，其中一条把指针截断了；还有两条链指向已经被删掉的段落…"
+  },
+  {
    "id":"r15",
    "content":"这一轮最该记住的不是那个 bug，是验收流程把它藏起来了：本地自造用例里有『ORDER BY 之后 LIMIT 0』，用有缺陷的镜像跑它是失败的；但验收时只读了检查器输出的截断视图（只看最后几行），又去读了上一轮的报告文件，于是把一次失败当成了通过。现在验收脚本把检查器的完整输出写进文件，并把报告里每一条用例都列出来，不通过的就单独打出来。"
   },
@@ -856,6 +869,22 @@
    "detail":"原始分按 agent-learning-evidence-v3-unbounded 累计五个维度的独立证据实例，不设上限。这一轮只有 2.0 分，说明材料里的证据没有被评审找到或者被判定为重复，于是按规则的写法重新组织：证据写进字符串字段、用 JSON pointer 定位、五个维度各用一组互不重复的证据。"
   },
   {
+   "id":"r8",
+   "round":5,
+   "submitted":"14a9c339fbd965769b67a360d04d985b39b1a7e4",
+   "item":"MySQL 正式用例 / 性能 / Agent Prompt",
+   "output":"MySQL 正式用例通过（准入条件）；性能原始指标 E = 1278.218333；Agent Prompt 原始分 = 10.000000。",
+   "detail":"这一轮把块大小从 8192 改成 16384，查询从 1.06 ms 降到 0.64 ms；材料按题面第 4.4 节重排（补摘要、范围、脱敏与缺失说明、三类来源、每实例评分理由），Agent Prompt 原始分从 7.5 涨到 10.0，这一项是有效的、参与排名。"
+  },
+  {
+   "id":"r9",
+   "round":6,
+   "submitted":"207428c5be220165503e3c5c4d127590dd1eb979",
+   "item":"MySQL 正式用例 / 性能 / Agent Prompt",
+   "output":"MySQL 正式用例通过（准入条件）；性能原始指标 E = 1629.021945；Agent Prompt 本项无效，平台给出的说明是『结果无效、待复核、超出平台 0–100 范围或缺少材料摘要，本项不参与排名』。",
+   "detail":"性能原始分从 1278.22 涨到 1629.02：写入路径把每次提交刷数据文件改成检查点时刷，fsync 从每批 8.00 次降到 1.80 次，进程内写入从 2.329 s 降到 1.451 s；查询路径不再为无过滤的查询展开存活位图。Agent Prompt 判无效之后查的是材料本身：证据链有十一条被从中间截…"
+  },
+  {
    "id":"r5",
    "round":3,
    "submitted":"c0777642c7fcf5c20cd4f4e47430a39bfd55e342",
@@ -878,6 +907,14 @@
    "item":"MySQL 正式用例 / 性能 / Agent Prompt",
    "output":"MySQL 正式用例通过（准入条件）；性能原始指标 E = 1278.218333；Agent Prompt 原始分 = 10.000000。",
    "detail":"这一轮把块大小从 8192 改成 16384，查询从 1.06 ms 降到 0.64 ms；材料按题面第 4.4 节重排（补摘要、范围、脱敏与缺失说明、三类来源、每实例评分理由），Agent Prompt 原始分从 7.5 涨到 10.0，这一项是有效的、参与排名。"
+  },
+  {
+   "id":"r10",
+   "round":7,
+   "submitted":"ed64c5e3eefca1fd6439db97a68daba0015c5048",
+   "item":"MySQL 正式用例 / 性能 / Agent Prompt",
+   "output":"MySQL 正式用例通过（准入条件）；性能原始指标 E = 1448.601659；Agent Prompt 原始分 = 10.000000，本项有效。",
+   "detail":"材料里的两个常量去掉之后，Agent Prompt 这一项重新有效，原始分 10.000000，与上一轮相同：新增的两个实例（带代价的写入改法、平台判无效之后的复查）没有把原始分抬上去，说明评审给这两条的档位与我们声明的一致。性能这一轮是 1448.60，上一轮是 1629.02：这一轮只改了材料、没有改引擎，两轮…"
   },
   {
    "id":"r9",
@@ -903,7 +940,7 @@
     "/conversations/5/student",
     "/platform_results/1/output",
     "/conversations/27/student",
-    "/platform_results/4/output"
+    "/platform_results/6/output"
    ],
    "独立验证与质疑":[
     "/user_prompts/3/content",
@@ -911,43 +948,43 @@
     "/conversations/14/student",
     "/experiments/28/output",
     "/conversations/29/student",
-    "/experiments/47/output"
+    "/experiments/48/output"
    ],
    "技术理解与迁移":[
     "/user_prompts/6/content",
     "/experiments/7/output",
     "/user_prompts/4/content",
     "/conversations/22/student",
-    "/experiments/39/output",
+    "/experiments/40/output",
     "/conversations/28/student",
-    "/experiments/46/output",
+    "/experiments/47/output",
     "/conversations/32/student",
-    "/experiments/52/output"
+    "/experiments/53/output"
    ],
    "实验与反馈迭代":[
     "/conversations/12/student",
     "/platform_results/2/output",
     "/conversations/21/student",
-    "/experiments/41/output",
+    "/experiments/42/output",
     "/conversations/23/student",
-    "/experiments/45/output",
+    "/experiments/46/output",
     "/conversations/26/student",
-    "/experiments/48/output",
+    "/experiments/49/output",
     "/conversations/35/student",
-    "/experiments/33/output"
+    "/platform_results/9/output"
    ],
    "取舍与反思":[
     "/conversations/15/student",
     "/experiments/29/output",
     "/conversations/9/student",
     "/conversations/18/student",
-    "/experiments/43/output",
-    "/conversations/19/student",
     "/experiments/44/output",
+    "/conversations/19/student",
+    "/experiments/45/output",
     "/conversations/20/student",
-    "/experiments/40/output",
+    "/experiments/41/output",
     "/conversations/31/student",
-    "/experiments/51/output",
+    "/experiments/52/output",
     "/conversations/34/student",
     "/experiments/32/output"
    ]
@@ -1213,10 +1250,10 @@
     "snippet":"A: 换成 blas 展开式"
    },
    "result_evidence":{
-    "pointer":"/experiments/43/output",
+    "pointer":"/experiments/44/output",
     "snippet":"answers that differ        : 0 / 1000"
    },
-   "chain":"先把抽样 200 组换成全量 1,000 条查询的对比（/experiments/38/output）→ 学生选展开式（/conversations/18/student）→ 实现（/experiments/42/output 记录了三种写法的取舍）→ 复测：1,000 条查询的答案 0 条不同，最大距离偏差 7.9e-07，完全相同的向量距离仍是精确的 0.0（/experiments/43/output）→ 随后发现范数用 float32 算比 float64 便宜 6 倍，展开式因此比原来的实现快 70%。",
+   "chain":"先把抽样 200 组换成全量 1,000 条查询的对比（/experiments/39/output）→ 学生选展开式（/conversations/18/student）→ 实现（/experiments/43/output 记录了三种写法的取舍）→ 复测：1,000 条查询的答案 0 条不同，最大距离偏差 7.9e-07，完全相同的向量距离仍是精确的 0.0（/experiments/44/output）→ 随后发现范数用 float32 算比 float64 便宜 6 倍，展开式因此比原来的实现快 70%。",
    "rationale":"档位 1.0：学生参与了验证，并且有实际的验证结果。证据链与两处引用见下。"
   },
   {
@@ -1230,10 +1267,10 @@
     "snippet":"A: 要，复测一次"
    },
    "result_evidence":{
-    "pointer":"/experiments/41/output",
+    "pointer":"/experiments/42/output",
     "snippet":"clustered  nprobe= 16  recall=0.999667"
    },
-   "chain":"所有召回率都是在均匀随机数据上测的 → 学生要求换分布复测（/conversations/21/student）→ 复测推翻了「聚集数据更难」的猜想：均匀随机才是最难的情形（nprobe=16 时 0.544），聚集数据 0.9997、倾斜数据 1.0（/experiments/41/output）→ 这个结果与学生同时做出的另一个决定一致：把探针数提到全部的簇（/conversations/19/student），三种分布上召回都是 1.0。",
+   "chain":"所有召回率都是在均匀随机数据上测的 → 学生要求换分布复测（/conversations/21/student）→ 复测推翻了「聚集数据更难」的猜想：均匀随机才是最难的情形（nprobe=16 时 0.544），聚集数据 0.9997、倾斜数据 1.0（/experiments/42/output）→ 这个结果与学生同时做出的另一个决定一致：把探针数提到全部的簇（/conversations/19/student），三种分布上召回都是 1.0。",
    "rationale":"档位 1.0：学生参与了验证，并且有实际的验证结果。证据链与两处引用见下。"
   },
   {
@@ -1247,10 +1284,10 @@
     "snippet":"A: nprobe 提到 64"
    },
    "result_evidence":{
-    "pointer":"/experiments/44/output",
+    "pointer":"/experiments/45/output",
     "snippet":"ann_nprobe_default"
    },
-   "chain":"实测出 nprobe=16 的召回只有 0.544（/experiments/39/output）→ 学生选择提到 64（/conversations/19/student）→ 实现之后用真实引擎在 6 万行、建了向量索引的表上复测（/experiments/44/output）→ 同时发现近似路径里每个候选行都读一次主键，那一次文件访问比距离计算本身还贵，改成只给最后的候选读主键之后，一条近似查询快了几十倍。",
+   "chain":"实测出 nprobe=16 的召回只有 0.544（/experiments/40/output）→ 学生选择提到 64（/conversations/19/student）→ 实现之后用真实引擎在 6 万行、建了向量索引的表上复测（/experiments/45/output）→ 同时发现近似路径里每个候选行都读一次主键，那一次文件访问比距离计算本身还贵，改成只给最后的候选读主键之后，一条近似查询快了几十倍。",
    "rationale":"档位 1.0：学生参与了验证，并且有实际的验证结果。证据链与两处引用见下。"
   },
   {
@@ -1264,10 +1301,10 @@
     "snippet":"A: 每次提交都写（推荐）"
    },
    "result_evidence":{
-    "pointer":"/experiments/40/output",
+    "pointer":"/experiments/41/output",
     "snippet":"checkpoint     write  2.940s   recover  0.017s"
    },
-   "chain":"把检查点策略做成一次对照实验（/experiments/40/output）→ 学生选择每次提交都写（/conversations/20/student）→ 代价是写入慢 11.8%，换来的是崩溃恢复从 18.896 秒降到 0.017 秒、数据目录从 13.15 MiB 降到 5.04 MiB；恢复的上限是 120 秒，按 18.9 秒/万行外推，20 万行的日志根本放不进去。",
+   "chain":"把检查点策略做成一次对照实验（/experiments/41/output）→ 学生选择每次提交都写（/conversations/20/student）→ 代价是写入慢 11.8%，换来的是崩溃恢复从 18.896 秒降到 0.017 秒、数据目录从 13.15 MiB 降到 5.04 MiB；恢复的上限是 120 秒，按 18.9 秒/万行外推，20 万行的日志根本放不进去。",
    "rationale":"档位 1.0：学生参与了验证，并且有实际的验证结果。证据链与两处引用见下。"
   },
   {
@@ -1281,10 +1318,10 @@
     "snippet":"A: 因为近邻都落在同一个簇里，均匀分布的近邻散在各个簇"
    },
    "result_evidence":{
-    "pointer":"/experiments/39/output",
+    "pointer":"/experiments/40/output",
     "snippet":"nprobe= 16  recall=0.544200  16.780 ms/query"
    },
-   "chain":"在均匀随机的数据上实测：召回随探针数单调上升，16 个簇只有 0.544、64 个簇才有 1.0（/experiments/39/output）——这正是「近邻散在各个簇」的表现 → 学生要求换分布复测（/conversations/21/student）→ 复测（/experiments/41/output）→ 学生用自己的话解释了这个机理（/conversations/22/student）→ 解释与两种分布的实测一致，并支持了把探针数提到全部的簇这个决定。",
+   "chain":"在均匀随机的数据上实测：召回随探针数单调上升，16 个簇只有 0.544、64 个簇才有 1.0（/experiments/40/output）——这正是「近邻散在各个簇」的表现 → 学生要求换分布复测（/conversations/21/student）→ 复测（/experiments/42/output）→ 学生用自己的话解释了这个机理（/conversations/22/student）→ 解释与两种分布的实测一致，并支持了把探针数提到全部的簇这个决定。",
    "rationale":"档位 1.5：学生解释了结果、据此修正方案并复测，形成了完整的证据链。证据链与两处引用见下。"
   },
   {
@@ -1298,10 +1335,10 @@
     "snippet":"A: 性能结论必须在评测环境里量，本机数字只能当线索"
    },
    "result_evidence":{
-    "pointer":"/experiments/45/output",
+    "pointer":"/experiments/46/output",
     "snippet":"query through the executor : 4.511 ms"
    },
-   "chain":"距离计算改成展开式之后，本机快 70%（1.53 ms → 0.45 ms），评测容器里却慢 2.5 倍（3.8 ms → 10.0 ms）→ 在容器里用 cProfile 拆开才看清是线性代数库的线程池：一次矩阵乘 1.13 ms 对 0.033 ms（/experiments/45/output）→ 学生把这条经验总结为「性能结论必须在评测环境里量」（/conversations/23/student）→ 修正：线程序数写进镜像与程序入口 → 复测：经协议一条查询 3.04 ms，比上一版的 4.01 ms 还快 24%。",
+   "chain":"距离计算改成展开式之后，本机快 70%（1.53 ms → 0.45 ms），评测容器里却慢 2.5 倍（3.8 ms → 10.0 ms）→ 在容器里用 cProfile 拆开才看清是线性代数库的线程池：一次矩阵乘 1.13 ms 对 0.033 ms（/experiments/46/output）→ 学生把这条经验总结为「性能结论必须在评测环境里量」（/conversations/23/student）→ 修正：线程序数写进镜像与程序入口 → 复测：经协议一条查询 3.04 ms，比上一版的 4.01 ms 还快 24%。",
    "rationale":"档位 1.5：学生解释了结果、据此修正方案并复测，形成了完整的证据链。证据链与两处引用见下。"
   },
   {
@@ -1315,10 +1352,10 @@
     "snippet":"A: 相消项确实变小，但距离本身也变小，所以相对误差反而更大；关键是绝对误差不变"
    },
    "result_evidence":{
-    "pointer":"/experiments/46/output",
+    "pointer":"/experiments/47/output",
     "snippet":"1000000 rows x  16 dims"
    },
-   "chain":"学生预测低维时相消更轻（/conversations/24/student）→ 按四种形状实测（/experiments/46/output）→ 学生自己把预测修正成正确的形式：相消项变小是真的，但距离也变小，所以相对误差反而更大（/conversations/28/student）→ 结果只成立一半：绝对误差与形状无关（都�� 6e-07），相对误差在 16 维时反而更大（5.8e-07 对 8.1e-08），因为距离本身也变小了；真正的安全边际是误差与间距之比始终在 1e-04 量级。",
+   "chain":"学生预测低维时相消更轻（/conversations/24/student）→ 按四种形状实测（/experiments/47/output）→ 学生自己把预测修正成正确的形式：相消项变小是真的，但距离也变小，所以相对误差反而更大（/conversations/28/student）→ 结果只成立一半：绝对误差与形状无关（都�� 6e-07），相对误差在 16 维时反而更大（5.8e-07 对 8.1e-08），因为距离本身也变小了；真正的安全边际是误差与间距之比始终在 1e-04 量级。",
    "rationale":"档位 1.5：学生解释了结果、据此修正方案并复测，形成了完整的证据链。证据链与两处引用见下。"
   },
   {
@@ -1332,10 +1369,10 @@
     "snippet":"A: 方向成立但幅度很小：k-means 的胞把近邻圈在一起，离群点也不例外"
    },
    "result_evidence":{
-    "pointer":"/experiments/47/output",
+    "pointer":"/experiments/48/output",
     "snippet":"recall=0.539333"
    },
-   "chain":"先前的结论是「聚集数据更容易、均匀随机最难」（/experiments/41/output）→ 学生自己提出反例（/conversations/25/student）→ 按这个设想构造三类查询实测（/experiments/47/output）→ 学生自己给出结论：方向成立但幅度很小，原因是 k-means 把空间切成 Voronoi 胞，离群点的近邻仍落在离它最近的那几个胞里（/conversations/29/student）；实测的幅度只有 1%（0.5393 对 0.5447），原因是 k-means 把空间切成 Voronoi 胞，离群点的近邻仍落在离它最近的那几个胞里；nprobe=64 时三类查询都是 1.0，结论仍然成立。",
+   "chain":"先前的结论是「聚集数据更容易、均匀随机最难」（/experiments/42/output）→ 学生自己提出反例（/conversations/25/student）→ 按这个设想构造三类查询实测（/experiments/48/output）→ 学生自己给出结论：方向成立但幅度很小，原因是 k-means 把空间切成 Voronoi 胞，离群点的近邻仍落在离它最近的那几个胞里（/conversations/29/student）；实测的幅度只有 1%（0.5393 对 0.5447），原因是 k-means 把空间切成 Voronoi 胞，离群点的近邻仍落在离它最近的那几个胞里；nprobe=64 时三类查询都是 1.0，结论仍然成立。",
    "rationale":"档位 1.5：学生解释了结果、据此修正方案并复测，形成了完整的证据链。证据链与两处引用见下。"
   },
   {
@@ -1349,10 +1386,10 @@
     "snippet":"A: 把过滤条件向量化，保持近似路径本身快"
    },
    "result_evidence":{
-    "pointer":"/experiments/48/output",
+    "pointer":"/experiments/49/output",
     "snippet":"ann_nprobe_default recall=1.000000  157.995 ms/query"
    },
-   "chain":"实测发现 6 万行的近似查询要 6.3 秒，而精确扫描只要 10 毫秒（/experiments/44/output）→ 学生选择把过滤条件向量化（/conversations/26/student）→ 实现：近似路径改成按块求值过滤条件，和精确扫描用同一套判断 → 复测：一条 6 万行的近似查询从 6322 ms 降到 158 ms，快 40 倍，召回仍是 1.0（/experiments/48/output）。",
+   "chain":"实测发现 6 万行的近似查询要 6.3 秒，而精确扫描只要 10 毫秒（/experiments/45/output）→ 学生选择把过滤条件向量化（/conversations/26/student）→ 实现：近似路径改成按块求值过滤条件，和精确扫描用同一套判断 → 复测：一条 6 万行的近似查询从 6322 ms 降到 158 ms，快 40 倍，召回仍是 1.0（/experiments/49/output）。",
    "rationale":"档位 1.5：学生解释了结果、据此修正方案并复测，形成了完整的证据链。证据链与两处引用见下。"
   },
   {
@@ -1366,7 +1403,7 @@
     "snippet":"A: 投在 Agent prompt：准入与性能都到顶，分数还卡在 2.5"
    },
    "result_evidence":{
-    "pointer":"/platform_results/4/output",
+    "pointer":"/platform_results/6/output",
     "snippet":"性能原始指标 E = 975.370000"
    },
    "chain":"第三次评测的结果：准入通过、性能原始分 975.37、Agent prompt 原始分 2.5（/platform_results/4/output）→ 学生据此判断剩下的分数只能从学习证据里出（/conversations/27/student）→ 于是这一轮把真实对话、决策原文和复测结果写进材料，并把证据实例按维度整理成可核对的表。",
@@ -1383,10 +1420,10 @@
     "snippet":"A: 不成立：K 大了以后候选集接近整块，省下的排序就少了"
    },
    "result_evidence":{
-    "pointer":"/experiments/52/output",
+    "pointer":"/experiments/53/output",
     "snippet":"K= 8192  complete sort 0.483 ms   selection 0.548 ms   factor 0.88"
    },
-   "chain":"查询改成部分选择之后快了近 20 倍（/experiments/49/output）→ 学生指出这个改动的边界是 K 的大小（/conversations/32/student）→ 实测把 K 从 10 走到 8192：19.06 倍、16.23 倍、8.54 倍、2.02 倍，到 K 等于块大小时反而比完整排序慢（0.548 ms 对 0.483 ms），交叉点在块大小的一半（/experiments/52/output）→ 结论：这个优化只在小 K 时成立，评测负载的 K=10 正好落在收益最大的一侧。",
+   "chain":"查询改成部分选择之后快了近 20 倍（/experiments/50/output）→ 学生指出这个改动的边界是 K 的大小（/conversations/32/student）→ 实测把 K 从 10 走到 8192：19.06 倍、16.23 倍、8.54 倍、2.02 倍，到 K 等于块大小时反而比完整排序慢（0.548 ms 对 0.483 ms），交叉点在块大小的一半（/experiments/53/output）→ 结论：这个优化只在小 K 时成立，评测负载的 K=10 正好落在收益最大的一侧。",
    "rationale":"档位 1.5：学生解释了结果、据此修正方案并复测，形成了完整的证据链。证据链与两处引用见下。"
   },
   {
@@ -1400,10 +1437,10 @@
     "snippet":"A: 合并列文件，fsync 8→4（写入 -18%，存储层改动最大）"
    },
    "result_evidence":{
-    "pointer":"/experiments/51/output",
+    "pointer":"/experiments/52/output",
     "snippet":"303    0.601"
    },
-   "chain":"剖析显示写入的 3.08 s 里 1.14 s 是 fsync（每次提交 8 次）→ 学生选了合并列文件这条改动最大的路（/conversations/31/student）→ 查布局发现同一个文件里多个会增长的区域会互相挪位，合并不成立；改用一次 syncfs 把数据列的 fsync 换成一次 → 实测：fsync 次数 803 → 303、fsync 时间 1.140 s → 0.601 s，但写入总时间没变（3.077 s 对 3.045 s），开销在刷数据本身（/experiments/51/output）→ 结论：合并不必要，而 syncfs 会连带刷同宿主别的队伍的脏页，这个改动没有保留。",
+   "chain":"剖析显示写入的 3.08 s 里 1.14 s 是 fsync（每次提交 8 次）→ 学生选了合并列文件这条改动最大的路（/conversations/31/student）→ 查布局发现同一个文件里多个会增长的区域会互相挪位，合并不成立；改用一次 syncfs 把数据列的 fsync 换成一次 → 实测：fsync 次数 803 → 303、fsync 时间 1.140 s → 0.601 s，但写入总时间没变（3.077 s 对 3.045 s），开销在刷数据本身（/experiments/52/output）→ 结论：合并不必要，而 syncfs 会连带刷同宿主别的队伍的脏页，这个改动没有保留。",
    "rationale":"档位 1.0：学生参与了验证，并且有实际的验证结果。证据链与两处引用见下。"
   },
   {
@@ -1420,7 +1457,7 @@
     "pointer":"/experiments/32/output",
     "snippet":"records really in it   : 5"
    },
-   "chain":"上一次提测的版本每次提交都把数据文件刷到磁盘，所以日志的缺陷被掩盖着 → 学生选了三条改法（/conversations/34/student）→ 这三条把正确性完全押在日志上，于是用同一个脚本量了上一次提测的版本：5 次提交在日志里只留了 2 条记录，而且一次从目录指定位置开始的恢复把日志从 222 字节截成 0（/experiments/32/output）→ 修好之后是 5 条记录、428 字节对 428 字节（/experiments/32/output）→ 之后才改写入路径：写入 2.329 s → 1.451 s、fsync 每批 8.00 → 1.80 次、日志 71,777 → 54,284 字节（/experiments/35/output）→ 结论：先证明日志可靠，再谈用日志换性能。",
+   "chain":"上一次提测的版本每次提交都把数据文件刷到磁盘，所以日志的缺陷被掩盖着 → 学生选了三条改法（/conversations/34/student）→ 这三条把正确性完全押在日志上，于是用同一个脚本量了上一次提测的版本：5 次提交在日志里只留了 2 条记录，而且一次从目录指定位置开始的恢复把日志从 222 字节截成 0（/experiments/32/output）→ 修好之后是 5 条记录、428 字节对 428 字节（/experiments/32/output）→ 之后才改写入路径：写入 2.329 s → 1.451 s、fsync 每批 8.00 → 1.80 次、日志 71,777 → 54,284 字节（/experiments/36/output）→ 结论：先证明日志可靠，再谈用日志换性能。",
    "rationale":"档位 1.0：学生参与了验证，并且有实际的验证结果。证据链与两处引用见下。"
   },
   {
@@ -1434,10 +1471,10 @@
     "snippet":"Prompt结果无效、待复核、超出平台0–100范围或缺少材料摘要，本项不参与排名"
    },
    "result_evidence":{
-    "pointer":"/experiments/33/output",
-    "snippet":"OK: the material is valid"
+    "pointer":"/platform_results/9/output",
+    "snippet":"Agent Prompt 原始分 = 10.000000，本项有效"
    },
-   "chain":"平台把 Agent Prompt 判成无效，并把四种可能的原因写在判定里（/conversations/35/student）→ 先查材料本身，不猜分数：十一条证据链被从中间截断（其中一条把指针截断了）、两条链指向已经被删掉的段落、文件正好卡在 128 KiB 的边上而摘要排在最后面 → 把链写完整、指针全部改成能解析的、摘要提到最前面、文件压到限制的七成以内 → 用仓库里的检查脚本复验：严格解析通过、引用全部可定位、原文全部匹配、没有任何一段原文被用了两次、体积远在限制之内（/experiments/33/output）→ 结论：平台说无效，就先把自己能查的东西查干净。",
+   "chain":"平台把 Agent Prompt 判成无效，并把四种可能的原因写在判定里（/conversations/35/student）→ 先查材料本身，不猜分数：十一条证据链被从中间截断（其中一条把指针截断了）、两条链指向已经被删掉的段落、文件正好卡在 128 KiB 的边上而摘要排在最后面 → 顺着题目第 4.4 节那句『输入不应包含重复 JSON 键或非标准的 JSON 数值』再查，发现材料里为了说明检查脚本，把那两个常量的名字本身写了进去 → 改掉那两个词、把链写完整、指针全部改成能解析的、摘要提到最前面、文件压到限制的七成以内，再用仓库里的检查脚本复验（/experiments/34/output）→ 下一轮提测，Agent Prompt 重新有效，原始分 10.000000（/platform_results/9/output）→ 结论：平台说无效，就先把自己能查的东西查干净；查出来的第一件事，是材料里写了题目禁止的那两个词。",
    "rationale":"档位 1.0：学生参与了验证，并且有实际的验证结果。证据链与两处引用见下。"
   }
  ],

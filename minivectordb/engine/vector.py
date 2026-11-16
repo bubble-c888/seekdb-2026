@@ -9,6 +9,7 @@ tolerance that the task package demands for distance assertions.
 from __future__ import annotations
 
 import json
+import os
 import math
 import re
 from typing import Any, Dict, List, Optional, Sequence, Tuple
@@ -18,6 +19,10 @@ import numpy as np
 from ..errors import DataError, DimensionMismatchError
 
 FLOAT32_MAX = float(np.finfo(np.float32).max)
+
+#: How many rows the quantizer handles at once.  The distances of a block
+#: against every cluster are the biggest array the build needs.
+KMEANS_BLOCK = int(os.environ.get("MINIVECTORDB_KMEANS_BLOCK", "2048"))
 
 _NUMBER_RE = re.compile(r"^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$")
 
@@ -194,9 +199,10 @@ def kmeans(
     if n == 0:
         return np.zeros((0, vectors.shape[1] if vectors.ndim == 2 else 0), dtype=np.float32)
     k = max(1, min(k, n))
+    dim = vectors.shape[1] if vectors.ndim == 2 else 0
     rng = np.random.default_rng(seed)
     # k-means++ seeding
-    centroids = np.empty((k, vectors.shape[1]), dtype=np.float32)
+    centroids = np.empty((k, dim), dtype=np.float32)
     first = int(rng.integers(0, n))
     centroids[0] = vectors[first]
     closest = l2_distances(vectors, centroids[0]) ** 2
@@ -211,14 +217,26 @@ def kmeans(
             centroids[index] = vectors[pick]
         closest = np.minimum(closest, l2_distances(vectors, centroids[index]) ** 2)
     for _ in range(iterations):
-        matrix = np.stack(
-            [l2_distances(vectors, centroid) for centroid in centroids], axis=1
-        )
-        assignment = np.argmin(matrix, axis=1)
+        # The distances are computed block by block and the sums of the
+        # clusters are gathered block by block: the matrix of all distances
+        # would be as big as the table itself, and the peak memory of the
+        # program is one of the three numbers the evaluation measures.
+        counts = np.zeros(k, dtype=np.int64)
+        sums = np.zeros((k, dim), dtype=np.float64)
+        for start in range(0, n, KMEANS_BLOCK):
+            block = vectors[start : start + KMEANS_BLOCK]
+            matrix = np.stack(
+                [l2_distances(block, centroid) for centroid in centroids], axis=1
+            )
+            assignment = np.argmin(matrix, axis=1)
+            for index in range(k):
+                members = block[assignment == index]
+                if members.shape[0]:
+                    counts[index] += members.shape[0]
+                    sums[index] += members.sum(axis=0, dtype=np.float64)
         for index in range(k):
-            members = vectors[assignment == index]
-            if members.shape[0]:
-                centroids[index] = members.mean(axis=0).astype(np.float32)
+            if counts[index]:
+                centroids[index] = (sums[index] / counts[index]).astype(np.float32)
     return centroids
 
 

@@ -111,6 +111,23 @@ class FileStore:
         self._sizes[key] = offset + len(data)
         return offset
 
+    def trim_to(self, key: str, size: int) -> None:
+        """Cut a file back to ``size``, if it is longer.
+
+        A batch that was never committed may have left bytes behind.  The
+        file is only cut, never extended: a file that is shorter than the
+        state of the last commit was damaged in a way the log cannot repair.
+        """
+        path = self.path(key)
+        if not path.exists():
+            return
+        if path.stat().st_size <= size:
+            return
+        with open(path, "r+b") as handle:
+            os.ftruncate(handle.fileno(), size)
+            handle.flush()
+        self._sizes[key] = size
+
     def truncate(self, key: str, size: int) -> None:
         path = self._ensure_parent(key)
         with open(path, "r+b" if path.exists() else "w+b") as handle:
@@ -317,19 +334,23 @@ class WriteAheadLog:
         self.open()
 
     # -- writing --------------------------------------------------------
-    def append_commit(self, txn_id: int, writes: WriteSet, meta: Dict[str, Any]) -> int:
-        """Append one committed transaction and flush it to stable storage."""
+    def append_commit(
+        self, txn_id: int, marker: Dict[str, Any], meta: Dict[str, Any]
+    ) -> int:
+        """Append one committed transaction and flush it to stable storage.
+
+        ``marker`` says what the commit did: the length every file it wrote
+        had after the commit.  The data itself is in the data files, so the
+        log does not have to hold it a second time.
+        """
         assert self._handle is not None, "log is not open"
         meta_bytes = json.dumps(meta, ensure_ascii=False, sort_keys=True).encode("utf-8")
-        patches = bytearray()
-        count = 0
-        for key, offset, data in writes.writes:
-            key_bytes = key.encode("utf-8")
-            patches += _WAL_PATCH.pack(len(key_bytes), offset, len(data))
-            patches += key_bytes
-            patches += data
-            count += 1
-        payload = _WAL_RECORD.pack(txn_id, len(meta_bytes), count) + meta_bytes + bytes(patches)
+        marker_bytes = json.dumps(marker, ensure_ascii=False, sort_keys=True).encode("utf-8")
+        payload = (
+            _WAL_RECORD.pack(txn_id, len(meta_bytes), len(marker_bytes))
+            + meta_bytes
+            + marker_bytes
+        )
         record = _WAL_HEADER.pack(len(payload), zlib.crc32(payload) & 0xFFFFFFFF) + payload
         self._handle.seek(self.offset)
         self._handle.write(record)
@@ -436,23 +457,18 @@ class WriteAheadLog:
     def _decode(payload: bytes) -> Optional[Dict[str, Any]]:
         """Turn the payload of a record back into its parts."""
         try:
-            txn_id, meta_length, count = _WAL_RECORD.unpack_from(payload, 0)
+            txn_id, meta_length, marker_length = _WAL_RECORD.unpack_from(payload, 0)
             position = _WAL_RECORD.size
             meta = json.loads(payload[position : position + meta_length].decode("utf-8"))
             position += meta_length
-            writes: List[Tuple[str, int, bytes]] = []
-            for _ in range(count):
-                key_length, offset, length = _WAL_PATCH.unpack_from(payload, position)
-                position += _WAL_PATCH.size
-                key = payload[position : position + key_length].decode("utf-8")
-                position += key_length
-                writes.append((key, offset, payload[position : position + length]))
-                position += length
+            marker = json.loads(
+                payload[position : position + marker_length].decode("utf-8")
+            )
         except (struct.error, UnicodeDecodeError, json.JSONDecodeError, IndexError):
             return None
-        if position != len(payload):
+        if position + marker_length != len(payload):
             return None
-        return {"op": "commit", "txn": txn_id, "writes": writes, "meta": meta}
+        return {"op": "commit", "txn": txn_id, "marker": marker, "meta": meta}
 
     def _cut(self, path: Path, good_end: int) -> None:
         """Cut the log at the end of the last complete record."""

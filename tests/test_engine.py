@@ -148,28 +148,32 @@ class PersistenceTest(DatabaseTestCase):
         finally:
             db.close()
 
-    def test_committed_transaction_is_recovered_after_a_crash(self) -> None:
-        """The log is replayed when the process dies between log and data."""
+    def test_a_commit_that_did_not_reach_the_log_is_not_visible(self) -> None:
+        """A commit that was not logged is not there after a restart.
+
+        A commit writes the data into the files and then puts its state
+        into the log.  A crash between the two leaves data that no commit
+        ever confirmed; a recovery cuts it away.
+        """
         from minivectordb.engine import storage as storage_module
 
         self.run_sql("CREATE TABLE t (id BIGINT PRIMARY KEY, v BIGINT);")
-        original_apply = storage_module.FileStore.apply_writes
+        original_append = storage_module.WriteAheadLog.append_commit
         state = {"failed": False}
 
-        def exploding_apply(self, writes):
-            # Let the catalog be written, but fail as soon as the data files
-            # are patched: the log already contains the commit.
+        def exploding_append(self, txn_id, marker, meta):
+            # The data is in the files, the log does not know about it.
             if not state["failed"]:
                 state["failed"] = True
-                raise OSError("simulated crash while applying the commit")
-            return original_apply(self, writes)
+                raise OSError("simulated crash before the log was written")
+            return original_append(self, txn_id, marker, meta)
 
-        storage_module.FileStore.apply_writes = exploding_apply
+        storage_module.WriteAheadLog.append_commit = exploding_append
         try:
             with self.assertRaises(OSError):
                 self.run_sql("INSERT INTO t VALUES (7, 70);")
         finally:
-            storage_module.FileStore.apply_writes = original_apply
+            storage_module.WriteAheadLog.append_commit = original_append
         self.assertTrue(state["failed"])
 
         db = Database(self.data_dir)
@@ -177,7 +181,7 @@ class PersistenceTest(DatabaseTestCase):
         executor = Executor(db)
         try:
             result = executor.execute(parse("SELECT id, v FROM t;"))
-            self.assertEqual(result["rows"], [[7, 70]])
+            self.assertEqual(result["rows"], [])
         finally:
             db.close()
 

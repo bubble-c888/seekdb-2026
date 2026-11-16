@@ -128,6 +128,7 @@ class Database:
         start_segment = wal_meta.get("segment")
         start_offset = int(wal_meta.get("offset", 0))
         touched: Set[str] = set()
+        sizes: Dict[str, int] = {}
         last_segment = segments[0]
         for segment in segments:
             last_segment = segment
@@ -141,19 +142,45 @@ class Database:
                 for _end, record in self.wal.iter_records(offset):
                     if record.get("op") != "commit":
                         continue
-                    patches = record.get("writes", [])
-                    if patches:
-                        touched.update(self.store.apply_writes(patches))
                     meta = record.get("meta")
                     if meta:
                         self.metadata = meta
+                    marker = record.get("marker") or {}
+                    for key, size in (marker.get("sizes") or {}).items():
+                        sizes[key] = int(size)
+                    # The log of the older versions held the patches of the
+                    # commit; they are applied the old way.
+                    patches = record.get("writes") or []
+                    if patches:
+                        touched.update(self.store.apply_writes(patches))
             finally:
                 self.wal.close()
+        if sizes or touched:
+            # The data of a batch that was never committed is cut away.
+            for key, size in sizes.items():
+                self.store.trim_to(key, size)
+            self._restore_alive()
         if touched:
             self.store.fsync(touched)
         # Continue logging in the last segment that was processed.
         self.wal.segment = last_segment
         self.wal.open()
+
+    def _restore_alive(self) -> None:
+        """Put the bitmap of every table back into the state of the metadata.
+
+        A batch that was never committed may have cleared the bit of a row
+        that was deleted.  The bitmap is rebuilt from the rows that are free,
+        which is what the metadata of the table holds.
+        """
+        for name, payload in self.metadata.get("tables", {}).items():
+            n_slots = int(payload.get("n_slots", 0))
+            free = payload.get("free_slots") or []
+            alive = np.ones(n_slots, dtype=bool)
+            if free:
+                alive[np.asarray(free, dtype=np.int64)] = False
+            bitmap = np.packbits(alive, bitorder="little").tobytes()
+            self.store.write("t/%s/alive.bits" % name, 0, bitmap)
 
     def _load_tables(self) -> None:
         self.tables = {}
@@ -280,7 +307,7 @@ class Database:
         for name in txn.dropped_tables:
             self.tables.pop(name, None)
 
-        # 4. write ahead log -- this is the commit point
+        # 4. the metadata of the database after this commit
         metadata = {
             "version": 1,
             "wal": {"segment": self.wal.segment, "offset": self.wal.offset},
@@ -288,16 +315,21 @@ class Database:
                 table.name: table.to_meta() for table in self.tables.values()
             },
         }
-        self.wal.append_commit(txn.id, txn.writes, metadata)
-        self.metadata = metadata
-
-        # 5. apply the patches
+        # 5. apply the patches to the data files
         keys = self.store.apply_writes(txn.writes.writes)
         for key in keys:
             cache_invalidate(self.store, key)
         self._dirty_keys.update(keys)
 
-        # 6. the values of the dictionary are in the files now, they are read
+        # 6. the log: this is the commit point.  The log holds the state of
+        #    the commit and not the data: the data is in the files, and a
+        #    recovery only has to cut away the part of a batch that was not
+        #    committed.
+        marker = self._commit_marker(keys)
+        self.wal.append_commit(txn.id, marker, metadata)
+        self.metadata = metadata
+
+        # 7. the values of the dictionary are in the files now, they are read
         #    from there instead of from the memory
         for name, overlay in txn.overlays.items():
             table = self.tables.get(name)
@@ -307,14 +339,23 @@ class Database:
                 if column.type == "VARCHAR":
                     table.dictionary(column).flush()
 
-        # 7. the commit point was the flush of the log.  The data files are
-        #    only flushed before a checkpoint, because the log holds the
-        #    patches of the commits since the last one and a recovery replays
-        #    them.  Flushing the data files on every commit cost five flushes
-        #    per commit and the data was durable anyway.
+        # 8. the commit point was the flush of the log.  The data files are
+        #    only flushed before a checkpoint, because the log holds the state
+        #    of the commits since the last one and a recovery cuts the files
+        #    back to that state.  Flushing the data files on every commit
+        #    cost five flushes per commit.
         self._pending_commits += 1
         if self._pending_commits >= CHECKPOINT_EVERY:
             self._flush_and_checkpoint()
+
+    def _commit_marker(self, keys: List[str]) -> Dict[str, Any]:
+        """What a recovery needs to know about a commit.
+
+        The length every file the commit wrote had after the commit.  A
+        recovery cuts the files back to these lengths, so that the part of a
+        batch that was never committed is gone.
+        """
+        return {"sizes": {key: self.store.size(key) for key in keys}}
 
     def _flush_and_checkpoint(self) -> None:
         """Make the data files durable and write the catalog.
@@ -327,8 +368,11 @@ class Database:
         if self._dirty_keys:
             self.store.fsync(self._dirty_keys)
             self._dirty_keys.clear()
-        self._rotate_wal()
+        # The catalog is written first: it names the segment that is still
+        # current, so a recovery starts there.  The rotation comes after it,
+        # and only then the segments the catalog covers are dropped.
         self.checkpoint()
+        self._rotate_wal()
         self._pending_commits = 0
 
     def _rotate_wal(self) -> None:
@@ -344,9 +388,13 @@ class Database:
         except ValueError:
             index = 1
         old_segments = self._segments()
+        current = self.wal.segment
         self.wal.switch_segment("wal-%06d.log" % index)
         for name in old_segments:
-            if name < self.wal.segment:
+            # The catalog names the segment that was current, so the segments
+            # before it are covered by the checkpoint and can go.  The segment
+            # the catalog names is kept: a recovery starts there.
+            if name < current:
                 try:
                     self.store.remove("%s/%s" % (WAL_DIR, name))
                 except OSError:

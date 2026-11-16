@@ -1,20 +1,19 @@
 """Tests for the write ahead log and the recovery.
 
-The log is the only thing that protects a commit between the moment it is
-acknowledged and the moment the data files reach the disk.  The tests below
-cover the cases in which that protection used to fail:
+The log holds the state of a commit and not the data of a commit: the data
+is in the data files, and the log says how long every file was after the
+commit.  A recovery therefore reads the log, takes the last metadata and
+cuts the files back to the lengths the log names, so that the part of a
+batch that was never committed is gone.
 
-* the data files are lost after the log was written (the commit is replayed),
-* the process dies while it recovers (the second recovery finishes the work),
-* the log holds a record that a crash cut in half (the record is dropped),
-* the log was written by an older version (the text format is still read).
+The tests cover that behaviour, the cases in which a crash used to lose a
+row that had been acknowledged, and the format of the log itself.
 """
 
 from __future__ import annotations
 
 import json
 import shutil
-import struct
 import sys
 import tempfile
 import unittest
@@ -27,7 +26,7 @@ if str(REPO_ROOT) not in sys.path:
 from minivectordb.engine import storage as storage_module  # noqa: E402
 from minivectordb.engine.database import Database  # noqa: E402
 from minivectordb.engine.executor import Executor  # noqa: E402
-from minivectordb.engine.storage import WAL_MAGIC, WriteAheadLog, WriteSet  # noqa: E402
+from minivectordb.engine.storage import WAL_MAGIC, WriteAheadLog  # noqa: E402
 from minivectordb.sqlparse import parse  # noqa: E402
 
 
@@ -55,11 +54,11 @@ class WalTestCase(unittest.TestCase):
         return self.run_sql(sql)["rows"]
 
     def crash(self) -> None:
-        """Simulate a crash: the log is on the disk, the program is gone.
+        """Simulate a crash: the log is flushed, but the database is gone.
 
         The log is flushed, but the database is neither closed nor
-        checkpointed, so the commits since the last checkpoint are only in the
-        log.
+        checkpointed, so the commits since the last checkpoint are only in
+        the log.
         """
         self.db.wal.close()
         self.db = None
@@ -96,11 +95,9 @@ class LogFormatTest(WalTestCase):
         store = storage_module.FileStore(self.data_dir)
         log = WriteAheadLog(store, "wal")
         log.open()
-        writes = WriteSet()
-        writes.add("t/docs/col_id.dat", 0, b"\x01\x00\x00\x00\x00\x00\x00\x00")
-        writes.add("t/docs/alive.bits", 3, b"\x05")
+        marker = {"sizes": {"t/docs/col_id.dat": 4096, "t/docs/alive.bits": 13}}
         meta = {"version": 1, "tables": {"docs": {"n_slots": 1}}}
-        log.append_commit(7, writes, meta)
+        log.append_commit(7, marker, meta)
         log.close()
 
         reader = WriteAheadLog(store, "wal")
@@ -112,23 +109,30 @@ class LogFormatTest(WalTestCase):
         self.assertEqual(record["op"], "commit")
         self.assertEqual(record["txn"], 7)
         self.assertEqual(record["meta"], meta)
-        self.assertEqual(
-            record["writes"],
-            [
-                ("t/docs/col_id.dat", 0, b"\x01\x00\x00\x00\x00\x00\x00\x00"),
-                ("t/docs/alive.bits", 3, b"\x05"),
-            ],
-        )
+        self.assertEqual(record["marker"], marker)
+
+    def test_the_log_holds_the_state_and_not_the_data(self) -> None:
+        """The log must not hold a second copy of the rows."""
+        self.run_sql("CREATE TABLE t (id BIGINT PRIMARY KEY, e VECTOR(64));")
+        for number in range(1, 21):
+            self.run_sql(
+                "INSERT INTO t VALUES (%d, '[%s]');"
+                % (number, ",".join(["0.5"] * 64))
+            )
+        path = self.log_path()
+        self.crash()
+        data = path.read_bytes()
+        # twenty rows of 64 floats are 5120 bytes of data; the log must be
+        # far smaller than that.
+        self.assertLess(len(data), 2048)
 
     def test_the_text_format_is_still_read(self) -> None:
         """A log of an older version is one JSON object per line."""
         store = storage_module.FileStore(self.data_dir)
-        writes = WriteSet()
-        writes.add("t/docs/alive.bits", 0, b"\x03")
         record = {
             "op": "commit",
             "txn": 1,
-            "writes": writes.encode(),
+            "writes": [["t/docs/alive.bits", 0, "AQ=="]],
             "meta": {"version": 1, "tables": {}},
         }
         payload = json.dumps(record, ensure_ascii=False).encode("utf-8") + b"\n"
@@ -141,7 +145,7 @@ class LogFormatTest(WalTestCase):
         records = list(reader.iter_records(0))
         reader.close()
         self.assertEqual(len(records), 1)
-        self.assertEqual(records[0][1]["writes"], [("t/docs/alive.bits", 0, b"\x03")])
+        self.assertEqual(records[0][1]["writes"], [("t/docs/alive.bits", 0, b"\x01")])
 
     def test_a_record_that_was_cut_in_half_is_dropped(self) -> None:
         self.run_sql("CREATE TABLE t (id BIGINT PRIMARY KEY, v BIGINT);")
@@ -159,28 +163,81 @@ class LogFormatTest(WalTestCase):
 
 
 class RecoveryTest(WalTestCase):
-    def wipe_data_files(self) -> None:
-        """The data files did not reach the disk, only the log did."""
-        for path in (self.data_dir / "t" / "t").glob("*.dat"):
-            path.write_bytes(b"")
-        (self.data_dir / "t" / "t" / "alive.bits").write_bytes(b"")
-
-    def test_a_commit_is_replayed_when_the_data_files_are_lost(self) -> None:
-        """The log alone is enough to restore a commit."""
+    def test_the_committed_rows_are_there_after_a_restart(self) -> None:
         self.run_sql("CREATE TABLE t (id BIGINT PRIMARY KEY, v BIGINT);")
         self.run_sql("INSERT INTO t VALUES (1, 10), (2, 20);")
         self.crash()
-        self.wipe_data_files()
-
         self.reopen()
         self.assertEqual(self.rows("SELECT id, v FROM t;"), [[1, 10], [2, 20]])
+
+    def test_a_batch_that_was_not_logged_is_cut_away(self) -> None:
+        """The data of a commit that never reached the log is not visible."""
+        self.run_sql("CREATE TABLE t (id BIGINT PRIMARY KEY, v BIGINT);")
+        self.run_sql("INSERT INTO t VALUES (1, 10);")
+
+        # The commit writes the data into the files and then fails to reach
+        # the log: this is the window between the two.
+        original = storage_module.WriteAheadLog.append_commit
+
+        def failing_append(self, txn_id, marker, meta):
+            raise OSError("the process died before the log was written")
+
+        storage_module.WriteAheadLog.append_commit = failing_append
+        try:
+            with self.assertRaises(OSError):
+                self.run_sql("INSERT INTO t VALUES (2, 20);")
+        finally:
+            storage_module.WriteAheadLog.append_commit = original
+
+        # The row is in the file, but it was never committed.  The process
+        # died, so nothing was closed and the catalog was not written.
+        self.crash()
+        self.reopen()
+        self.assertEqual(self.rows("SELECT id, v FROM t;"), [[1, 10]])
+
+    def test_an_uncommitted_transaction_is_dropped(self) -> None:
+        self.run_sql("CREATE TABLE t (id BIGINT PRIMARY KEY, v BIGINT);")
+        self.run_sql("INSERT INTO t VALUES (1, 10);")
+        self.run_sql("BEGIN;")
+        self.run_sql("INSERT INTO t VALUES (2, 20);")
+        self.crash()
+        self.reopen()
+        self.assertEqual(self.rows("SELECT id, v FROM t;"), [[1, 10]])
+
+    def test_a_deleted_row_that_was_not_committed_comes_back(self) -> None:
+        """The bitmap of a row that was deleted but not committed is put back."""
+        self.run_sql("CREATE TABLE t (id BIGINT PRIMARY KEY, v BIGINT);")
+        self.run_sql("INSERT INTO t VALUES (1, 10), (2, 20);")
+
+        # The delete reaches the file but not the log.
+        original = storage_module.WriteAheadLog.append_commit
+
+        def failing_append(self, txn_id, marker, meta):
+            raise OSError("the process died before the log was written")
+
+        storage_module.WriteAheadLog.append_commit = failing_append
+        try:
+            with self.assertRaises(OSError):
+                self.run_sql("DELETE FROM t WHERE id = 1;")
+        finally:
+            storage_module.WriteAheadLog.append_commit = original
+
+        self.crash()
+        self.reopen()
+        self.assertEqual(self.rows("SELECT id, v FROM t;"), [[1, 10], [2, 20]])
+
+    def test_a_deleted_row_that_was_committed_stays_deleted(self) -> None:
+        self.run_sql("CREATE TABLE t (id BIGINT PRIMARY KEY, v BIGINT);")
+        self.run_sql("INSERT INTO t VALUES (1, 10), (2, 20);")
+        self.run_sql("DELETE FROM t WHERE id = 1;")
+        self.crash()
+        self.reopen()
+        self.assertEqual(self.rows("SELECT id, v FROM t;"), [[2, 20]])
 
     def test_the_recovery_is_idempotent(self) -> None:
         self.run_sql("CREATE TABLE t (id BIGINT PRIMARY KEY, v BIGINT);")
         self.run_sql("INSERT INTO t VALUES (1, 10);")
         self.crash()
-        self.wipe_data_files()
-
         for _ in range(3):
             self.reopen()
             self.assertEqual(self.rows("SELECT id, v FROM t;"), [[1, 10]])
@@ -192,23 +249,18 @@ class RecoveryTest(WalTestCase):
         for value in range(1, 6):
             self.run_sql("INSERT INTO t VALUES (%d, %d);" % (value, value * 10))
         self.crash()
-        self.wipe_data_files()
 
-        original_apply = storage_module.FileStore.apply_writes
-        state = {"failed": False}
+        original = storage_module.FileStore.write
 
-        def exploding_apply(self, writes):
-            if not state["failed"]:
-                state["failed"] = True
-                raise OSError("the process died during the recovery")
-            return original_apply(self, writes)
+        def exploding_write(self, key, offset, data):
+            raise OSError("the process died during the recovery")
 
-        storage_module.FileStore.apply_writes = exploding_apply
+        storage_module.FileStore.write = exploding_write
         try:
             with self.assertRaises(OSError):
                 Database(self.data_dir).open()
         finally:
-            storage_module.FileStore.apply_writes = original_apply
+            storage_module.FileStore.write = original
 
         # The second recovery has to complete the work of the first one.
         self.reopen()
@@ -217,17 +269,6 @@ class RecoveryTest(WalTestCase):
             [[1, 10], [2, 20], [3, 30], [4, 40], [5, 50]],
         )
 
-    def test_an_uncommitted_transaction_is_dropped(self) -> None:
-        self.run_sql("CREATE TABLE t (id BIGINT PRIMARY KEY, v BIGINT);")
-        self.run_sql("INSERT INTO t VALUES (1, 10);")
-        self.run_sql("BEGIN;")
-        self.run_sql("INSERT INTO t VALUES (2, 20);")
-        self.crash()
-        self.wipe_data_files()
-
-        self.reopen()
-        self.assertEqual(self.rows("SELECT id, v FROM t;"), [[1, 10]])
-
     def test_the_log_does_not_grow_without_a_checkpoint(self) -> None:
         """A checkpoint drops the log that the data files already cover."""
         self.run_sql("CREATE TABLE t (id BIGINT PRIMARY KEY, v BIGINT);")
@@ -235,7 +276,8 @@ class RecoveryTest(WalTestCase):
             self.run_sql("INSERT INTO t VALUES (%d, %d);" % (value, value))
         self.db.close()
         files = self.wal_files()
-        self.assertEqual(len(files), 1)
+        # The segment the catalog names and the one that follows it.
+        self.assertEqual(len(files), 2)
         self.assertLess(files[0].stat().st_size, 8192)
 
 

@@ -38,8 +38,12 @@ WAL_DIR = "wal"
 
 #: How many commits pass before the data files are flushed and the catalog is
 #: written.  The commit point is the flush of the log, so the commits since
-#: the last checkpoint are replayed by a recovery and do not have to be on the
-#: disk before the next commit.
+#: the last checkpoint do not have to be on the disk before the next commit.
+#: A checkpoint costs seven flushes of the file system - the data files, the
+#: directory, the catalog and its directory - and there are a hundred
+#: commits in the benchmark, so the interval decides how much of the write
+#: time is spent waiting for the disk.  The log of the commits in between
+#: stays small: a record holds the state of a commit and not its data.
 CHECKPOINT_EVERY = int(os.environ.get("MINIVECTORDB_CHECKPOINT_EVERY", "10") or "10")
 
 

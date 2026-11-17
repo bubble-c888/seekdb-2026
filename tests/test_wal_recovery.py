@@ -113,18 +113,18 @@ class LogFormatTest(WalTestCase):
 
     def test_the_log_holds_the_state_and_not_the_data(self) -> None:
         """The log must not hold a second copy of the rows."""
-        self.run_sql("CREATE TABLE t (id BIGINT PRIMARY KEY, e VECTOR(64));")
-        for number in range(1, 21):
+        self.run_sql("CREATE TABLE t (id BIGINT PRIMARY KEY, e VECTOR(128));")
+        for number in range(1, 101):
             self.run_sql(
                 "INSERT INTO t VALUES (%d, '[%s]');"
-                % (number, ",".join(["0.5"] * 64))
+                % (number, ",".join(["0.5"] * 128))
             )
         path = self.log_path()
         self.crash()
         data = path.read_bytes()
-        # twenty rows of 64 floats are 5120 bytes of data; the log must be
-        # far smaller than that.
-        self.assertLess(len(data), 2048)
+        # A hundred rows of 128 floats are 51200 bytes of data; the log holds
+        # the state of every commit and not the rows themselves.
+        self.assertLess(len(data), 20000)
 
     def test_the_text_format_is_still_read(self) -> None:
         """A log of an older version is one JSON object per line."""

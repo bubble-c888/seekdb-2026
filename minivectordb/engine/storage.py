@@ -170,6 +170,15 @@ class FileStore:
                     while index < len(patches) and patches[index][0] == start + len(data):
                         data = data + patches[index][1]
                         index += 1
+                    # Several patches of the same byte: only the last one
+                    # counts, it holds the state of all of them.
+                    while (
+                        index < len(patches)
+                        and patches[index][0] == start
+                        and len(patches[index][1]) == len(data)
+                    ):
+                        data = patches[index][1]
+                        index += 1
                     handle.seek(start)
                     handle.write(data)
                 handle.flush()

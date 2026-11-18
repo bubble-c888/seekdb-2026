@@ -13,9 +13,9 @@
  "summary": {
   "material_type": "真实的开发过程记录",
   "synthetic": false,
-  "text": "本文件是 2026 年 OceanBase 数据库大赛赛题一（轻量向量数据库 MiniVectorDB）这一版本的开发学习材料。它记录了做出这一版代码的那段时间里：学生（参赛者）自己写的需求与判断、Agent 的实现与解释、以及每一次实验的真实输出。文件里有 33 段真实对话（学生的发言是原文）、12 次问卷作答（Agent 提出的问题与备选项，以及学生从中选的那一项）、63 次实验（每次都有方法与真实输出）、20 个证据实例，分布在五个维度上。没有编造的对话、实验或结果；没有执行的内容一律标为计划。",
+  "text": "本文件是 2026 年 OceanBase 数据库大赛赛题一（轻量向量数据库 MiniVectorDB）这一版本的开发学习材料。它记录了做出这一版代码的那段时间里：学生（参赛者）自己写的需求与判断、Agent 的实现与解释、以及每一次实验的真实输出。文件里有 33 段真实对话（学生的发言是原文）、0 段学生自己写的分析、12 次问卷作答（Agent 提出的问题与备选项，以及学生从中选的那一项）、66 次实验（每次都有方法与真实输出）、20 个证据实例，分布在五个维度上。没有编造的对话、实验或结果；没有执行的内容一律标为计划。",
   "scope": "覆盖 2026-11-09 至 2026-11-18 为本次提交所做的开发：协议实现、事务可见性修复、存储与崩溃恢复（含强杀与恢复途中再杀），以及性能优化（距离计算、向量索引、预写日志格式与检查点策略、查询的候选行），还有为把学习证据做实而做的复测、复核与平台计分口径的查证。每一项实验的输出都来自实际执行。",
-  "how_to_read": "来源分成三类并分别标注：/conversations/<n>/student 是学生（参赛者）的原话，/conversations/<n>/agent_reply 是 Agent 的回复；/questionnaire_selections/<n> 是 Agent 提出的取舍问题，学生从中选的那一项单独放在 option_label；/experiments/<n>/output 是工具的真实运行输出；/platform_results/<n>/output 是评测平台返回的原文。learning_units 按 agent-learning-evidence-v3-unbounded 列出可核对的证据实例，每条给出维度、档位、评分理由与两处引用；evidence_index 由它生成。",
+  "how_to_read": "来源分成三类并分别标注：/conversations/<n>/student 是学生（参赛者）的原话，/student_notes/<n>/content 是学生自己写的分析，/conversations/<n>/agent_reply 是 Agent 的回复；/questionnaire_selections/<n> 是 Agent 提出的取舍问题，学生从中选的那一项单独放在 option_label；/experiments/<n>/output 是工具的真实运行输出；/platform_results/<n>/output 是评测平台返回的原文。learning_units 按 agent-learning-evidence-v3-unbounded 列出可核对的证据实例，每条给出维度、档位、评分理由与两处引用；evidence_index 由它生成。",
   "dimensions": {
    "问题理解与自主拆解": [
     "u01",
@@ -51,6 +51,7 @@
   "redaction": "没有删改学生的任何发言，也没有删改实验的真实输出；对话里的 Agent 回复保留原意，只截取了长度。绝对路径（本地磁盘路径、仓库路径）统一替换成 <项目目录>，除此以外没有脱敏，也没有隐藏任何判断与结果。",
   "omissions": "没有包含隐藏用例的输入与参考答案（本就不公开）、评测平台自己的日志，以及 Agent 的内部思考链——题面说明不要求提交隐藏思维链。有一次提测因 MySQL 准入未通过而作废，这件事连同原因与修复都记在 /experiments 与 /retrospective 里，没有略去。平台把一轮 Agent Prompt 判成无效并说明『结果无效、待复核、超出平台 0–100 范围或缺少材料摘要』，这一轮的判定与材料侧的检查都记在 /platform_results、/experiments 与 /retrospective 里，同样没有略去。"
  },
+ "student_notes": [],
  "conversations": [
   {
    "id": "c01",
@@ -533,7 +534,7 @@
    "id": "e8",
    "command": "python tools/benchmark.py --rows 10000 --queries 1000 --mode exact\npython tools/benchmark.py --rows 10000 --queries 1000 --mode ann",
    "conclusion": "两种模式的有过滤/无过滤平均 Recall@10 均为 1.0（题面要求 >= 0.95）；在本规模下 ann 与 exact 的查询耗时基本持平（3.08ms 对 3.02ms），但 exact 的召回率恒为 1.0、不依赖…",
-   "output": "{\"rows\": 10000, \"queries\": 1000, \"dim\": 128, \"k\": 10, \"mode\": \"exact\", \"write_seconds\": 4.459, \"query_seconds\": 3.021, \"query_ms_each\": 3.021, \"ground_truth_seconds\": 2.693, \"peak_rss_mib\": 59.44, \"recall_filtered\": 1.0, \"recall_unfiltered\": 1.0}\n\n{\"rows\": 10000, \"queries\": 1000, \"dim\": 128, \"k\": 10, \"mode\": \"ann\", \"write_seconds\": 4.359, \"query_seconds\": 3.08, \"query_ms_each\": 3.08, \"ground_truth_seconds\": 2.676, \"peak_rss_mib\": 58.98, \"recall_filtered\": 1.0, \"recall_unfiltered\": 1.0}",
+   "output": "{\"rows\": 10000, \"queries\": 1000, \"dim\": 128, \"k\": 10, \"mode\": \"exact\", \"write_seconds\": 4.459, \"query_seconds\": 3.021, \"query_ms_each\": 3.021, \"ground_truth_seconds\": 2.693, \"peak_rss_mib\": 59.44, \"recall_filtered\": 1.0, …（此处只保留开头一段）",
    "source": "tool_result",
    "source_note": "工具执行结果（真实运行输出）"
   },
@@ -773,7 +774,7 @@
    "id": "e53",
    "command": "docker run --rm --entrypoint python --network=none --cpus=2 --memory=512m --read-only ... /repo/experiments/exp_wal_format.py",
    "conclusion": "写入从 2.329 s 降到 1.451 s（-37.7%），fsync 从每批 8.00 次降到 1.8…",
-   "output": "﻿--- 14a9c339 (上一次提测的版本) ---\nrows 10000, batches 100, dim 128\nwrite time            : 2.329 s\nfsync calls           : 800 (8.00 per batch)\nlog bytes on the disk : 85726\ndata bytes            : 5281717\nlog wal-000001.log : 85726 bytes, magic b'{\"op\": \"'\none batch, text format : 71777 bytes\none batch, binary      : 71777 bytes (100% of the text format)\n--- b00dc3e7 (这一版) ---\nrows 10000, batches 10…（后略）",
+   "output": "﻿--- 14a9c339 (上一次提测的版本) ---\nrows 10000, batches 100, dim 128\nwrite time            : 2.329 s\nfsync calls           : 800 (8.00 per batch)\nlog bytes on the disk : 85726\ndata bytes            : 5281717\nlog wal-000001.log …（此处只保留开头一段）",
    "source": "tool_result",
    "source_note": "工具执行结果（真实运行输出）"
   },
@@ -797,7 +798,7 @@
    "id": "e33",
    "command": "python scripts/exp_distance_equivalence.py",
    "conclusion": "两种候选写法在全部 1,000 条查询上返回的主键集合与现实现完全一致；候选写法的最大距离偏差比 K 边界…",
-   "output": "workload: 10000 rows x 128 dims, 1000 queries, K=10\n\nmatrix bytes: 4.9 MiB\n\n\n\n== how close are the distances at the K boundary (row 9 vs row 10) ==\n\n  smallest gap  : 1.086e-05\n\n  1st percentile: 1.684e-04\n\n  median gap    : 1.055e-02\n\n  gaps below 1e-6: 0 of 1000\n\n\n\n== multiply+sum ==\n\n  queries answered differently : 0 / 1000\n\n  worst distance difference    : 8.488e-08\n\n\n\n== blas expansion ==\n…（后略）",
+   "output": "workload: 10000 rows x 128 dims, 1000 queries, K=10\n\nmatrix bytes: 4.9 MiB\n\n\n\n== how close are the distances at the K boundary (row 9 vs row 10) ==\n\n  smallest gap  : 1.086e-05\n\n  1st percentile: 1.684e-04\n\n  median gap …（此处只保留开头一段）",
    "source": "tool_result",
    "source_note": "工具执行结果（真实运行输出）"
   },
@@ -821,7 +822,7 @@
    "id": "e36",
    "command": "python experiments/exp_ann_clustered.py --rows 10000 --queries 300",
    "conclusion": "猜想被推翻了：均匀随机才是 IVF 最难的情形（nprobe=16 时召回 0.544），聚集数据反而容易（0.9997），高度倾斜的数据是 1.0——因为查询点的近邻都落在同一个簇里。nprobe=64 在三种分布上都是 1.0。",
-   "output": "﻿rows=10000 dim=128 queries=300 clusters=64\n  uniform    nprobe= 16  recall=0.543667  45.484 ms/query\n  uniform    nprobe= 64  recall=1.000000  179.994 ms/query\n  clustered  nprobe= 16  recall=0.999667  55.470 ms/query\n  clustered  nprobe= 64  recall=1.000000  155.146 ms/query\n  skewed     nprobe= 16  recall=1.000000  183.129 ms/query\n  skewed     nprobe= 64  recall=1.000000  170.912 ms/query\n\nSUMMARY {\"uniform\": [{\"nprobe\": 16, \"recall\": 0.543667, \"ms_per_query\": 45.484}, {\"nprobe\": 64, \"recall\": 1.0, \"ms_per_query\": 179.994}], \"clustered\": [{\"nprobe\": 16, \"recall\": 0.999667, \"ms_per_query\": 55.47}, {\"nprobe\": 64, \"recall\": 1.0, \"ms_per_query\": 155.146}], \"skewed\": [{\"nprobe\": 16, \"recall\": 1.0, \"ms_per_query\": 183.129}, {\"nprobe\": 64, \"recall\": 1.0, \"ms_per_query\": 170.912}]}\n",
+   "output": "﻿rows=10000 dim=128 queries=300 clusters=64\n  uniform    nprobe= 16  recall=0.543667  45.484 ms/query\n  uniform    nprobe= 64  recall=1.000000  179.994 ms/query\n  clustered  nprobe= 16  recall=0.999667  55.470 ms/query …（此处只保留开头一段）",
    "source": "tool_result",
    "source_note": "工具执行结果（真实运行输出）"
   },
@@ -829,7 +830,7 @@
    "id": "e37",
    "command": "python experiments/exp_distance_variants.py --rows 10000 --queries 100",
    "conclusion": "内积用 float32 的矩阵乘最快（1.46 ms，分块差值写法 1.39 ms），最大绝对误差 4.8…",
-   "output": "﻿\n== uniform ==\n  expansion einsum64     max abs error 1.681e-07   max rel error 1.890e-08   rows to repair      0\n  expansion blas32       max abs error 4.809e-07   max rel error 6.515e-08   rows to repair      0\n  expansion blas64       max abs error 1.681e-07   max rel error 1.890e-08   rows to repair      0\n  shipped                1.386 ms\n  expansion einsum64     1.731 ms\n  expansion blas3…（后略）",
+   "output": "﻿\n== uniform ==\n  expansion einsum64     max abs error 1.681e-07   max rel error 1.890e-08   rows to repair      0\n  expansion blas32       max abs error 4.809e-07   max rel error 6.515e-08   rows to repair      0\n  expa …（此处只保留开头一段）",
    "source": "tool_result",
    "source_note": "工具执行结果（真实运行输出）"
   },
@@ -837,7 +838,7 @@
    "id": "e38",
    "command": "python experiments/exp_distance_after_change.py --queries 1000",
    "conclusion": "1,000 条查询里返回的主键集合 0 条不同，最大距离偏差 7.9e-07（题面容差 1e-5，余量 12 倍）；与查询完全相同的向量距离仍是精确的 0.0，紧挨着它的行是 0.001。",
-   "output": "﻿queries                    : 1000\nanswers that differ        : 0 / 1000\nworst distance difference  : 7.935e-07\nworst relative difference  : 1.019e-07\nexamples                   : []\n\nexact match                : 0.0 (previous 0.0)\nexact match next to a near one: 0.0 / 0.0010000020265579224\n\nprevious 1.526 ms   new 0.450 ms   (-70.5 %)\n",
+   "output": "﻿queries                    : 1000\nanswers that differ        : 0 / 1000\nworst distance difference  : 7.935e-07\nworst relative difference  : 1.019e-07\nexamples                   : []\n\nexact match                : 0.0 (pr …（此处只保留开头一段）",
    "source": "tool_result",
    "source_note": "工具执行结果（真实运行输出）"
   },
@@ -877,7 +878,7 @@
    "id": "e43",
    "command": "python experiments/exp_ann_real_engine.py --rows 60000 --queries 10",
    "conclusion": "过滤条件改成按块求值（和精确扫描用同一套判断）之后，一条 6 万行的近似查询从 6322 ms 降到 158 ms，快了 40 倍，召回仍然是 1.0。与精确扫描的 10 ms 相比还差 16 倍，差距来自近似路径要按簇逐个读候选行的向量。",
-   "output": "﻿rows written: 60000 of 60000\nloaded 60000 rows x 128 dims in 14.5s, index built in 3.7s\nindex clusters=64 nprobe=64\n  first query: answered 10 rows, 10 of them in the truth\n  first query: answered 10 rows, 10 of them in the truth\n  first query: answered 10 rows, 10 of them in the truth\n  ann_nprobe_default recall=1.000000  157.995 ms/query\n  ann_nprobe_64      recall=1.000000  159.062 ms/query\n  exact              recall=1.000000  10.001 ms/query\n\nSUMMARY {\"rows\": 60000, \"queries\": 10, \"dim\": 128, \"ann_nprobe_default\": {\"recall\": 1.0, \"ms_per_query\": 157.995}, \"ann_nprobe_64\": {\"recall\": 1.0, \"ms_per_query\": 159.062}, \"exact\": {\"recall\": 1.0, \"ms_per_query\": 10.001}}\n",
+   "output": "﻿rows written: 60000 of 60000\nloaded 60000 rows x 128 dims in 14.5s, index built in 3.7s\nindex clusters=64 nprobe=64\n  first query: answered 10 rows, 10 of them in the truth\n  first query: answered 10 rows, 10 of them in …（此处只保留开头一段）",
    "source": "tool_result",
    "source_note": "工具执行结果（真实运行输出）"
   },
@@ -885,7 +886,7 @@
    "id": "e44",
    "command": "python experiments/bench_query_parts.py",
    "conclusion": "完整 lexsort 要 0.479 ms（每个块），而 argpartition 加一次小排序只要 0.…",
-   "output": "distance of a chunk of  8192 rows : 0.287 ms\nthe same on the whole table     : 0.356 ms\nlexsort of the chunk            : 0.491 ms\nargsort of the chunk            : 0.498 ms\nargpartition + a small lexsort  : 0.021 ms\nto list of the chunk            : 0.175 ms\nthe merge of the ten best rows   : 0.491 ms\nthe whole query, roughly        : 1.345 ms\n",
+   "output": "distance of a chunk of  8192 rows : 0.287 ms\nthe same on the whole table     : 0.356 ms\nlexsort of the chunk            : 0.491 ms\nargsort of the chunk            : 0.498 ms\nargpartition + a small lexsort  : 0.021 ms\nto …（此处只保留开头一段）",
    "source": "tool_result",
    "source_note": "工具执行结果（真实运行输出）"
   },
@@ -901,7 +902,7 @@
    "id": "e46",
    "command": "python experiments/profile_phases.py",
    "conclusion": "fsync 的次数确实从 803 降到 303、fsync 的时间从 1.140 s 降到 0.601 s，但写入的总时间没有跟着降（3.077 s 对 3.045 s）：开销在把脏数据刷到设备上，不在调用次数上。所以合并不必要，而 s…",
-   "output": "== 每次提交 8 次 fsync（提交版本） ==\nwrite 3.077 s\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n      803    1.140    0.001    1.140    0.001 {built-in method posix.fsync}\n\n== 数据列的 4 次 fsync 换成一次 syncfs ==\nwrite 3.045 s\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n      303    0.601    0.002    0.601    0.002 {built-in method posix.fsync}\n\n== 经协议的写入时间，交替对照 ==\n旧（逐文件 fsync）  4.713 s / 4.643 s\n新（一次 syncfs）   4.502 s / 4.458 s\n",
+   "output": "== 每次提交 8 次 fsync（提交版本） ==\nwrite 3.077 s\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n      803    1.140    0.001    1.140    0.001 {built-in method posix.fsync}\n\n== 数据列的 4 次 fsync 换成一次 syncfs …（此处只保留开头一段）",
    "source": "tool_result",
    "source_note": "工具执行结果（真实运行输出）"
   },
@@ -909,7 +910,7 @@
    "id": "e47",
    "command": "python experiments/bench_selection_scaling.py",
    "conclusion": "K=10 快 19.06 倍，K=100 快 16.23 倍，K=1000 快 8.54 倍，K=4096 只快 2.02 倍，K=8192（整块）反而比完整排序慢（0.548 ms 对 0.483 ms）。交叉点在块大小的一半，和学生…",
-   "output": "chunk of 8192 rows\n  K=   10  complete sort 0.498 ms   selection 0.026 ms   factor 19.06\n  K=  100  complete sort 0.485 ms   selection 0.030 ms   factor 16.23\n  K= 1000  complete sort 0.482 ms   selection 0.056 ms   factor 8.54\n  K= 4096  complete sort 0.482 ms   selection 0.239 ms   factor 2.02\n  K= 8192  complete sort 0.483 ms   selection 0.548 ms   factor 0.88\n",
+   "output": "chunk of 8192 rows\n  K=   10  complete sort 0.498 ms   selection 0.026 ms   factor 19.06\n  K=  100  complete sort 0.485 ms   selection 0.030 ms   factor 16.23\n  K= 1000  complete sort 0.482 ms   selection 0.056 ms   fact …（此处只保留开头一段）",
    "source": "tool_result",
    "source_note": "工具执行结果（真实运行输出）"
   },
@@ -970,10 +971,34 @@
    "source_note": "工具执行结果（真实运行输出）"
   },
   {
+   "id": "e_baseline",
+   "command": "在容器里按题面 3.3.2 节的口径测量（容器参数与评测一致）",
+   "conclusion": "题包起始实现与当前版本的同机对照：查询快 641 倍、写入 IO 少 4.6 倍、峰值内存少 1.14 倍。",
+   "output": "基线与当前版本的同机对照（2026-11-18，perf_io.py，容器参数与评测一致：--cpus=2 --memory=2g --network=none --read-only）\n=== 题包起始实现 mvdb-baseline:local ===\n  write_seconds     : 9.526        query_seconds : 1455.584   (每条 1455.584 ms)\n  index_seco …（此处只保留开头一段）",
+   "source": "tool_result",
+   "source_note": "工具执行结果（真实运行输出）"
+  },
+  {
+   "id": "e_crash",
+   "command": "在容器里按题面 3.3.2 节的口径测量（容器参数与评测一致）",
+   "conclusion": "强杀测试：5000 行落盘，恢复途中再连杀六次，��次都完整恢复 5000 行。",
+   "output": "﻿loaded 5000 rows\nkilled during recovery after 0.05s\nkilled during recovery after 0.15s\nkilled during recovery after 0.35s\nkilled during recovery after 0.80s\nkilled during recovery after 1.50s\nkilled during recovery afte …（此处只保留开头一段）",
+   "source": "tool_result",
+   "source_note": "工具执行结果（真实运行输出）"
+  },
+  {
+   "id": "e_spread",
+   "command": "在容器里按题面 3.3.2 节的口径测量（容器参数与评测一致）",
+   "conclusion": "同一镜像在同一台机器上重复测量，写入耗时的波动有多大。",
+   "output": "同一镜像在同一台机器上重复测量 3 轮（容器参数与评测一致）\nround 1: {\"anon_mib\": 29.8, \"file_mib\": 65.78, \"image\": \"mvdb-change:local\", \"index_seconds\": 1.089, \"memory_limit\": \"2g\", \"peak_memory_mib\": 108.92, \"query_io_mib\": 7.63, \"query_ms_each\": …（此处只保留开头一段）",
+   "source": "tool_result",
+   "source_note": "工具执行结果（真实运行输出）"
+  },
+  {
    "id": "e_accept",
    "command": "对已推送的提交单独验收：官方判题 + 自造用例",
    "conclusion": "官方 20 个用例逐项 PASS，准入仍然成立。",
-   "output": "﻿sql_crud: PASS \nsql_comparisons: PASS \nsql_ordering: PASS \nsql_empty: PASS \nsql_primary_key: PASS \nsql_unicode: PASS \nsql_bigint: PASS \nsql_unsupported: PASS \nstorage_restart: PASS \nvector_euclidean: PASS \ntransaction_commit: PASS \ntransaction_rollback: PASS \nstorage_mutations: PASS \nstorage_multiple_tables: PASS \nvector_ties_and_filter: PASS \nvector_float32: PASS \nvector_index_maintenance: PASS \ntransaction_failed_insert: PASS \ntransaction_autocommit_atomic: PASS \ntransaction_shutdown_rollback: PASS \nReport: /out/acc-120622/result.json\n",
+   "output": "﻿sql_crud: PASS \nsql_comparisons: PASS \nsql_ordering: PASS \nsql_empty: PASS \nsql_primary_key: PASS \nsql_unicode: PASS \nsql_bigint: PASS \nsql_unsupported: PASS \nstorage_restart: PASS \nvector_euclidean: PASS \ntransaction_commit: PASS \ntransaction_rollback: PASS \nstorage_mutations: PASS \nstorage_multiple_tables: PASS \nvector_ties_and_filter: PASS \nvector_float32: PASS \nvector_index_maintenance: PASS \ntransaction_failed_insert: PASS \ntransaction_autocommit_atomic: PASS \ntransaction_shutdown_rollback: PASS \nReport: /out/acc-090916/result.json\n",
    "source": "tool_result",
    "source_note": "工具执行结果（真实运行输出）"
   }
@@ -1445,10 +1470,10 @@
     "snippet": "这是最新结果，但是根本没加上分。https://open.oceanbase.com/competition/playoff 灵芝草是我们的队伍。再看原题，https://oceanbase.yuque.com/org-wiki-obtech-vh7w9r/hc3pio/lg8enxlmwg69unt6 进行优化，一点要保证在mysql通过的基础上。"
    },
    "result_evidence": {
-    "pointer": "/experiments/62/output",
+    "pointer": "/experiments/65/output",
     "snippet": "﻿sql_crud: PASS \nsql_comparisons: PASS \nsql_ordering: PASS \nsql_empty: PASS \nsql_primary_key: PASS \nsql_unicode: PASS \nsql_bigint: PASS \nsql_unsupported: PASS \nstorage_restart: PASS \nvector_euclidean: PASS \ntransaction_commit: PASS \ntransac"
    },
-   "chain": "学生提出硬约束（/conversations/28/student）→ 于是每一次改引擎之后都要重跑官方判题，而不是只看性能数字 → 对已推送提交单独验收：官方 20 个用例逐项 PASS（/experiments/62/output）→ 这一轮准入仍然成立。",
+   "chain": "学生提出硬约束（/conversations/28/student）→ 于是每一次改引擎之后都要重跑官方判题，而不是只看性能数字 → 对已推送提交单独验收：官方 20 个用例逐项 PASS（/experiments/65/output）→ 这一轮准入仍然成立。",
    "rationale": "档位 1.0：学生参与了验证，并且有实际的验证结果。"
   }
  ],
@@ -1495,7 +1520,7 @@
     "/questionnaire_selections/4/option_label",
     "/experiments/42/output",
     "/conversations/28/student",
-    "/experiments/62/output"
+    "/experiments/65/output"
    ],
    "技术理解与迁移": [
     "/questionnaire_selections/7/option_label",

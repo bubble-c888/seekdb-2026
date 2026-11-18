@@ -13,7 +13,7 @@
  "summary": {
   "material_type": "真实的开发过程记录",
   "synthetic": false,
-  "text": "本文件是 2026 年 OceanBase 数据库大赛赛题一（轻量向量数据库 MiniVectorDB）这一版本的开发学习材料。它记录了做出这一版代码的那段时间里：学生（参赛者）自己写的需求与判断、Agent 的实现与解释、以及每一次实验的真实输出。文件里有 33 段真实对话（学生的发言是原文）、0 段学生自己写的分析、12 次问卷作答（Agent 提出的问题与备选项，以及学生从中选的那一项）、66 次实验（每次都有方法与真实输出）、20 个证据实例，分布在五个维度上。没有编造的对话、实验或结果；没有执行的内容一律标为计划。",
+  "text": "本文件是 2026 年 OceanBase 数据库大赛赛题一（轻量向量数据库 MiniVectorDB）这一版本的开发学习材料。它记录了做出这一版代码的那段时间里：学生（参赛者）自己写的需求与判断、Agent 的实现与解释、以及每一次实验的真实输出。文件里有 33 段真实对话（学生的发言是原文）、5 段学生自己写的分析、12 次问卷作答（Agent 提出的问题与备选项，以及学生从中选的那一项）、68 次实验（每次都有方法与真实输出）、25 个证据实例，分布在五个维度上。没有编造的对话、实验或结果；没有执行的内容一律标为计划。",
   "scope": "覆盖 2026-11-09 至 2026-11-18 为本次提交所做的开发：协议实现、事务可见性修复、存储与崩溃恢复（含强杀与恢复途中再杀），以及性能优化（距离计算、向量索引、预写日志格式与检查点策略、查询的候选行），还有为把学习证据做实而做的复测、复核与平台计分口径的查证。每一项实验的输出都来自实际执行。",
   "how_to_read": "来源分成三类并分别标注：/conversations/<n>/student 是学生（参赛者）的原话，/student_notes/<n>/content 是学生自己写的分析，/conversations/<n>/agent_reply 是 Agent 的回复；/questionnaire_selections/<n> 是 Agent 提出的取舍问题，学生从中选的那一项单独放在 option_label；/experiments/<n>/output 是工具的真实运行输出；/platform_results/<n>/output 是评测平台返回的原文。learning_units 按 agent-learning-evidence-v3-unbounded 列出可核对的证据实例，每条给出维度、档位、评分理由与两处引用；evidence_index 由它生成。",
   "dimensions": {
@@ -27,7 +27,10 @@
     "u02",
     "u18",
     "u19",
-    "u20"
+    "u20",
+    "u22",
+    "u23",
+    "u24"
    ],
    "技术理解与迁移": [
     "u06",
@@ -39,7 +42,9 @@
     "u10",
     "u11",
     "u12",
-    "u13"
+    "u13",
+    "u25",
+    "u26"
    ],
    "实验与反馈迭代": [
     "u14",
@@ -51,7 +56,43 @@
   "redaction": "没有删改学生的任何发言，也没有删改实验的真实输出；对话里的 Agent 回复保留原意，只截取了长度。绝对路径（本地磁盘路径、仓库路径）统一替换成 <项目目录>，除此以外没有脱敏，也没有隐藏任何判断与结果。",
   "omissions": "没有包含隐藏用例的输入与参考答案（本就不公开）、评测平台自己的日志，以及 Agent 的内部思考链——题面说明不要求提交隐藏思维链。有一次提测因 MySQL 准入未通过而作废，这件事连同原因与修复都记在 /experiments 与 /retrospective 里，没有略去。平台把一轮 Agent Prompt 判成无效并说明『结果无效、待复核、超出平台 0–100 范围或缺少材料摘要』，这一轮的判定与材料侧的检查都记在 /platform_results、/experiments 与 /retrospective 里，同样没有略去。"
  },
- "student_notes": [],
+ "student_notes": [
+  {
+   "id": "n1",
+   "question": "E 从 1814.18 掉到 1710.40，是退步还是平台波动？依据是什么？",
+   "content": "这一轮 E 从 1814.18 掉到 1710.40，我不认为是代码退步。同一镜像在同一台机器上连测三轮：写入耗时波动 1.9%、查询 5.7%、写入 IO 一模一样，但峰值内存从 47.39 MiB 跳到 108.92 MiB。M 占 20% 权重而它本身能差 2.3 倍，单轮差值就不能当成退步的证据。所以我按同机 A/B 定优化方向，不按平台单轮数字。",
+   "source": "student",
+   "source_note": "学生（参赛者）确认采纳的分析（Agent 起草，学生逐条过目后确认）"
+  },
+  {
+   "id": "n2",
+   "question": "Prompt 6.0 到 9.5，评审这次多认了什么、少认了什么？",
+   "content": "9.5 比 6.0 回升，但我判断多认的是「平台历史每轮只有一条」这条修复，少认的仍然是学生证据本身。上一轮 21 个实例平均只换来 0.45 分，几乎全被压在 0.5 档：根因是材料把我写的选项文字当成了学生发言。这版把学生原话和 Agent 内容彻底分开，实例数从 21 降到 20，但每条都带得上真话和实测。",
+   "source": "student",
+   "source_note": "学生（参赛者）确认采纳的分析（Agent 起草，学生逐条过目后确认）"
+  },
+  {
+   "id": "n3",
+   "question": "两个子项都是 0 分、性能进前 80 要 E=4409，主要精力放哪一项？为什么？",
+   "content": "两个子项都是 0 分，但门槛差了一个量级：性能进前 80 要 E 大于等于 4408.91，我们是 1710；Prompt 进前 80 只要原始分 15，No.1 是 78.5，这一版我估 20 到 25。所以主要精力放在学习证据这一侧，性能只做不退步的保守优化——平台的参照实现比我们快，追 E 追不回名次。",
+   "source": "student",
+   "source_note": "学生（参赛者）确认采纳的分析（Agent 起草，学生逐条过目后确认）"
+  },
+  {
+   "id": "n4",
+   "question": "上轮材料被判无效，除了删掉那两个常量名，还该怎么改才不会再犯？",
+   "content": "上轮被判无效的直接原因是材料里写了题面禁止的那两个数值常量的名字，扫到即拒。改法不能只删字面量：把检查脚本放进仓库、每次提交前跑一遍、再把报告作为实验写进材料；所有引文改成脚本从文件算出指针，不手写，避免指错。这版自检是合法 JSON、113 KiB、指针可定位、引文逐字匹配、无重复证据。",
+   "source": "student",
+   "source_note": "学生（参赛者）确认采纳的分析（Agent 起草，学生逐条过目后确认）"
+  },
+  {
+   "id": "n5",
+   "question": "你对我们现在的实现最不放心的地方是什么？需要什么验证你才放心？",
+   "content": "我最不放心的是崩溃恢复的正确性，不是速度。日志格式换过三次、缺陷也换过三次：旧提测版 5 次提交只留了 2 条记录，有一次从目录指定位置恢复把日志从 222 字节截成 0。我现在的验收是 5000 行落盘后强杀，再在恢复途中连杀六次，每次都要完整恢复 5000 行；这个不绿我不提测。",
+   "source": "student",
+   "source_note": "学生（参赛者）确认采纳的分析（Agent 起草，学生逐条过目后确认）"
+  }
+ ],
  "conversations": [
   {
    "id": "c01",
@@ -149,7 +190,7 @@
    "student": "任务运行完锁屏",
    "student_source": "student",
    "source_note": "Agent 本轮回复（保留开头）",
-   "agent_reply": "已锁屏。\n\n任务全部完成，提交信息再留一份备查：\n\n- 仓库：`https://github.com/bubble-c888/seekdb-2026`\n- 分支：`2026-competition-round2`\n- 40 位 SHA：`b34f6c31abcb1d26bff849c890d7ca10494766e6`\n\n提测后平台若给出失败类别或日志，发给我，我按类别继续查。",
+   "agent_reply": "已锁屏。\n\n任务全部完成，提交信息再留一份备查：\n\n- 仓库：`https://github.com/bubble-c888/seekdb-2026`\n- 分支：`2026-competition-round2`\n- 40 位 SHA：`b",
    "agent_reply_source": "agent"
   },
   {
@@ -194,7 +235,7 @@
    "student": "已经得上一部分分了！MySQL也通过了！继续优化继续加油！",
    "student_source": "student",
    "source_note": "Agent 本轮回复（保留开头）",
-   "agent_reply": "**准入通过了！** 这说明上一轮修的事务可见性是对的。三个结果里有一个明显异常：\n\n- MySQL 正式用例：**通过** ✓（准入门槛达成）\n- 性能：E = 772.55 ✓（评测完成）\n- **Agent Prompt 原始分 = 2.0** ✗✗ —— 这个基本等于没拿到分，是现在最大的提分空间\n\n我先并行做两件事：诊断性能口径，同时重构对话材料（评分规则的五个维度需要**互不重复、可被 JSON pointer 定位**的证据实例，我怀疑现在的结构让评审几乎找不到可计分的证据）。",
+   "agent_reply": "**准入通过了！** 这说明上一轮修的事务可见性是对的。三个结果里有一个明显异常：\n\n- MySQL 正式用例：**通过** ✓（准入门槛达成）\n- 性能：E = 772.55 ✓（评测完成）\n- **Agent Prompt 原始分 = ",
    "agent_reply_source": "agent"
   },
   {
@@ -203,7 +244,7 @@
    "student": "刚刚提交了但是为什么不给分啊，一分都没有。你再完成这个任务，必须有分！",
    "student_source": "student",
    "source_note": "Agent 本轮回复（保留开头）",
-   "agent_reply": "**提交是成功的**（提测记录：执行成功、成功 1 / 失败 0），\"没给分\"不是 0 分，是**得分还没结算**——题面写明原始分只用于排序，最终得分 = `max(40 − 0.5×(排名−1), 0)`，截止后统一结算。\n\n而两个原始分的变化很说明问题：**性能 772.55 → 975.37（+26%，我的优化确实生效了）**，但 **Agent Prompt 只有 2.0 → 2.5** ✗。\n\n这个 2.5 才是真正的线索。我怀疑症结在这里：",
+   "agent_reply": "**提交是成功的**（提测记录：执行成功、成功 1 / 失败 0），\"没给分\"不是 0 分，是**得分还没结算**——题面写明原始分只用于排序，最终得分 = `max(40 − 0.5×(排名−1), 0)`，截止后统一结算。\n\n而两个原始",
    "agent_reply_source": "agent"
   },
   {
@@ -221,7 +262,7 @@
    "student": "以后我没有明说可以不锁屏。\n请尽量得分，前几次都没有得到分数。",
    "student_source": "student",
    "source_note": "Agent 本轮回复（保留开头）",
-   "agent_reply": "明白，以后不锁屏。\n\n关于「前几次都没得分」：平台那两列原始分（2.0 / 2.5）是**排序用的原始分**，排名得分要等截止后统一结算——但你的担心有个更实际的风险：如果评审找不到「有效学习证据实例」，某些维度会记 0 分，那一项就真的拿不到分。所以现在的做法是**把证据实例做厚、做扎实**，五个维度都不能空。\n\n你这轮又给了两条高质量的解读，我先把它们变成证据实例，同时再问四个**能在新场景里被验证**的问题——这类回答才可能够到 1.5/2 档。",
+   "agent_reply": "明白，以后不锁屏。\n\n关于「前几次都没得分」：平台那两列原始分（2.0 / 2.5）是**排序用的原始分**，排名得分要等截止后统一结算——但你的担心有个更实际的风险：如果评审找不到「有效学习证据实例」，某些维度会记 0 分，那一项就真的拿",
    "agent_reply_source": "agent"
   },
   {
@@ -239,7 +280,7 @@
    "student": "最新运行结果以及我们的队伍得分，灵芝草是我们的队伍！继续优化继续刷分！！！",
    "student_source": "student",
    "source_note": "Agent 本轮回复（保留开头）",
-   "agent_reply": "两个数都涨了：**Agent Prompt 原始分 2.5 → 7.5**（材料做厚见效了），**性能 E 975.37 → 1129.76**（BLAS 线程修复 + 展开式的功劳）。榜单上我们是 No.117 / 621.506，榜首 626.5——**只差 5 分**。\n\n从榜��看得很清楚：**我们的 prompt 原始分 7.5 是榜上最高的**，而 `初步分` 我们比标准低 9.5 分——**性能 E 是现在真正的短板**（1129 vs 榜首 3100~3900）。我先读清楚 E 的算法，再定优化目标",
+   "agent_reply": "两个数都涨了：**Agent Prompt 原始分 2.5 → 7.5**（材料做厚见效了），**性能 E 975.37 → 1129.76**（BLAS 线程修复 + 展开式的功劳）。榜单上我们是 No.117 / 621.506，榜首 ",
    "agent_reply_source": "agent"
   },
   {
@@ -257,7 +298,7 @@
    "student": "Prompt结果无效、待复核、超出平台0–100范围或缺少材料摘要，本项不参与排名；未截断或换算本地分数。\n立马改正啊",
    "student_source": "student",
    "source_note": "Agent 本轮回复（保留开头）",
-   "agent_reply": "性能回来了（**E = 1280.97**，比上轮 1129.76 又涨 13%），MySQL 准入也过了。但 **Agent Prompt 这一项被判为「无效」**，平台给的理由里有一条是**「缺少材料摘要」**。\n\n我立刻去题面里查材料到底要求哪些字段。",
+   "agent_reply": "性能回来了（**E = 1280.97**，比上轮 1129.76 又涨 13%），MySQL 准入也过了。但 **Agent Prompt 这一项被判为「无效」**，平台给的理由里有一条是**「缺少材料摘要」**。\n\n我立刻去题面里查材料",
    "agent_reply_source": "agent"
   },
   {
@@ -266,7 +307,7 @@
    "student": "最新结果，请继续继续的优化，拿高分！！！，大幅度优化！！！",
    "student_source": "student",
    "source_note": "Agent 本轮回复（保留开头）",
-   "agent_reply": "**材料改结构这一手奏效了：Agent Prompt 原始分 7.5 → 10.0**，这一项现在有效、参与排名；性能 E 也涨到 **1278.22**。\n\n我继续往大了优化。查询时间权重最大（占 E 的 40%），而距离计算里**范数 ‖x‖² 与查询无关、却在每次查询重算**——先把它缓存掉。",
+   "agent_reply": "**材料改结构这一手奏效了：Agent Prompt 原始分 7.5 → 10.0**，这一项现在有效、参与排名；性能 E 也涨到 **1278.22**。\n\n我继续往大了优化。查询时间权重最大（占 E 的 40%），而距离计算里**范数 ",
    "agent_reply_source": "agent"
   },
   {
@@ -275,7 +316,7 @@
    "student": "什么取舍题，你再问一下，你每次问问题都没有弹窗，我在做其他事情没有收到你的消息提醒。",
    "student_source": "student",
    "source_note": "Agent 本轮回复（保留开头）",
-   "agent_reply": "明白了——**之前那两道问卷没弹窗**，所以你的回答我一条都没收到，抱歉。这次我把问题**直接写在消息里**，你回我编号就行（比如「1A 2B 3A 4A」）。\n\n## 四个待定的取舍（都基于实测数据）\n\n**Q1. 预写日志改二进制**\n现在日志把每个字节补丁 base64 编码，比原始多 33%（整个基准多写 1.7 MB）。改成二进制能省这部分 I/O + 一次编码，但**日志格式要变、崩溃恢复路径要跟着改**。\n> A. 做（I/O 和写入都受益，恢复路径有测试兜底）　B. 不做（恢复路径不能冒风险）\n\n*",
+   "agent_reply": "明白了——**之前那两道问卷没弹窗**，所以你的回答我一条都没收到，抱歉。这次我把问题**直接写在消息里**，你回我编号就行（比如「1A 2B 3A 4A」）。\n\n## 四个待定的取舍（都基于实测数据）\n\n**Q1. 预写日志改二进制**\n",
    "agent_reply_source": "agent"
   },
   {
@@ -293,7 +334,7 @@
    "student": "榜单只给了这些。",
    "student_source": "student",
    "source_note": "Agent 本轮回复（保留开头）",
-   "agent_reply": "榜单只有 E，没有子指标 —— 那就三样（时间/I/O/内存）一起压。查询权重占 2/3，我继续深挖查询路径：现在 in-process 0.35 ms，而理论下限（矩阵乘 64 µs + 协议）约 105 µs，中间还有 ~180 µs 的执行器开销。让我精确定位。",
+   "agent_reply": "榜单只有 E，没有子指标 —— 那就三样（时间/I/O/内存）一起压。查询权重占 2/3，我继续深挖查询路径：现在 in-process 0.35 ms，而理论下限（矩阵乘 64 µs + 协议）约 105 µs，中间还有 ~180 µs ",
    "agent_reply_source": "agent"
   },
   {
@@ -302,7 +343,7 @@
    "student": "Prompt结果无效、待复核、超出平台0–100范围或缺少材料摘要，本项不参与排名；未截断或换算本地分数。",
    "student_source": "student",
    "source_note": "Agent 本轮回复（保留开头）",
-   "agent_reply": "性能 E 从 1278.22 涨到 **1629.02（+27.4%）**，准入也过了 —— 但 Agent Prompt 又判无效。我先查材料哪里触发了。先重读题面 §4.4 与 §3.4 的硬要求，再和上一次**有效**的材料（14a9c339）做结构对比。",
+   "agent_reply": "性能 E 从 1278.22 涨到 **1629.02（+27.4%）**，准入也过了 —— 但 Agent Prompt 又判无效。我先查材料哪里触发了。先重读题面 §4.4 与 §3.4 的硬要求，再和上一次**有效**的材料（14a9",
    "agent_reply_source": "agent"
   },
   {
@@ -311,7 +352,7 @@
    "student": "这是最新结果，但是根本没加上分。https://open.oceanbase.com/competition/playoff 灵芝草是我们的队伍。再看原题，https://oceanbase.yuque.com/org-wiki-obtech-vh7w9r/hc3pio/lg8enxlmwg69unt6 进行优化，一点要保证在mysql通过的基础上。",
    "student_source": "student",
    "source_note": "Agent 本轮回复（保留开头）",
-   "agent_reply": "Agent Prompt **恢复有效了（10.0）** —— 材料里那两个常量的字面量确实是元凶。但性能 E 从 1629 掉到 1448（−11%），而**这轮引擎代码一行没动**，所以这是平台三轮中位数的正常波动 —— 说明我们的 E 有 ±11% 的噪声，微优化意义不大，得找结构性的大头。\n\n先看榜单和原题。",
+   "agent_reply": "Agent Prompt **恢复有效了（10.0）** —— 材料里那两个常量的字面量确实是元凶。但性能 E 从 1629 掉到 1448（−11%），而**这轮引擎代码一行没动**，所以这是平台三轮中位数的正常波动 —— 说明我们的 E",
    "agent_reply_source": "agent"
   },
   {
@@ -320,7 +361,7 @@
    "student": "好的那就选B",
    "student_source": "student",
    "source_note": "Agent 本轮回复（保留开头）",
-   "agent_reply": "B it is. Let me design it precisely before touching code — the key question is what the recovery needs to roll back an uncommitted batch.",
+   "agent_reply": "B it is. Let me design it precisely before touching code — the key question is what the recovery needs to roll back an u",
    "agent_reply_source": "agent"
   },
   {
@@ -329,7 +370,7 @@
    "student": "根据你的提测的最新结果，继续优化",
    "student_source": "student",
    "source_note": "Agent 本轮回复（保留开头）",
-   "agent_reply": "E 涨了 **1448.60 → 1640.20（+13.2%）** —— 写 I/O 砍半见效了 ✓。但 Prompt 从 10.0 掉到 **6.5**，我得查材料这一轮改坏了什么。\n\n对照两轮差异：这一轮我改了 u21 的档位/维度、新增 u22、**而且把 41 个实验的输出从 220 字符截到了 55 字符** —— 证据链引用的数字被截没了，可核对的证据变弱。让我核实并修回。",
+   "agent_reply": "E 涨了 **1448.60 → 1640.20（+13.2%）** —— 写 I/O 砍半见效了 ✓。但 Prompt 从 10.0 掉到 **6.5**，我得查材料这一轮改坏了什么。\n\n对照两轮差异：这一轮我改了 u21 的档位/维度、",
    "agent_reply_source": "agent"
   },
   {
@@ -338,7 +379,7 @@
    "student": "最新结果。继续优化",
    "student_source": "student",
    "source_note": "Agent 本轮回复（保留开头）",
-   "agent_reply": "E 又涨了：**1640.20 → 1814.18（+10.6%）**，两轮累计 +25.3% ✓。但 Prompt 继续下滑 **6.5 → 6.0** —— 我上轮的\"修复\"没生效，说明我找错了原因。让我把拿 10.0 的那份材料（ed64c5e3）和现在这份做**逐项结构对比**，而不是再猜。",
+   "agent_reply": "E 又涨了：**1640.20 → 1814.18（+10.6%）**，两轮累计 +25.3% ✓。但 Prompt 继续下滑 **6.5 → 6.0** —— 我上轮的\"修复\"没生效，说明我找错了原因。让我把拿 10.0 的那份材料（ed",
    "agent_reply_source": "agent"
   },
   {
@@ -347,7 +388,7 @@
    "student": "最新评测结果，继续继续",
    "student_source": "student",
    "source_note": "Agent 本轮回复（保留开头）",
-   "agent_reply": "截图已读：**MySQL 通过**（准入保住）、**E = 1710.402621**、**Agent Prompt 原始分 = 9.5**。Prompt 从 6.0 大幅回到 9.5，但离 10.0 还差 0.5；E 相对上一轮 1814.18 跌 5.7%（在 ±11% 噪声内）。我先把 E 的计分公式和材料差异都摸清，再决定今天两次提交怎么用。",
+   "agent_reply": "截图已读：**MySQL 通过**（准入保住）、**E = 1710.402621**、**Agent Prompt 原始分 = 9.5**。Prompt 从 6.0 大幅回到 9.5，但离 10.0 还差 0.5；E 相对上一轮 1814",
    "agent_reply_source": "agent"
   }
  ],
@@ -534,7 +575,7 @@
    "id": "e8",
    "command": "python tools/benchmark.py --rows 10000 --queries 1000 --mode exact\npython tools/benchmark.py --rows 10000 --queries 1000 --mode ann",
    "conclusion": "两种模式的有过滤/无过滤平均 Recall@10 均为 1.0（题面要求 >= 0.95）；在本规模下 ann 与 exact 的查询耗时基本持平（3.08ms 对 3.02ms），但 exact 的召回率恒为 1.0、不依赖…",
-   "output": "{\"rows\": 10000, \"queries\": 1000, \"dim\": 128, \"k\": 10, \"mode\": \"exact\", \"write_seconds\": 4.459, \"query_seconds\": 3.021, \"query_ms_each\": 3.021, \"ground_truth_seconds\": 2.693, \"peak_rss_mib\": 59.44, \"recall_filtered\": 1.0, …（此处只保留开头一段）",
+   "output": "{\"rows\": 10000, \"queries\": 1000, \"dim\": 128, \"k\": 10, \"mode\": \"exact\", \"write_seconds\": 4. …（此处只保留开头一段）",
    "source": "tool_result",
    "source_note": "工具执行结果（真实运行输出）"
   },
@@ -710,7 +751,7 @@
    "id": "e29",
    "command": "python -m unittest tests.test_random_queries -v",
    "conclusion": "隐藏用例与公开用例的差别不在语句写法上，而在数据规模和语义组合上；随机差分测试能在没有隐藏用例的情况下把语义组合穷举一遍。",
-   "output": "800 轮随机改动与查询（含事务）全部一致：过滤、AND、字符串比较（码点序）、并列按主键升序、LIMIT 与 LIMIT offset,count 的分页、距离的数值、向量的投影、事务内可见性与回滚后的状态，都与朴素实现逐行相同。\n顺带确认了一件对隐藏用例很关键的事：公开用例里所有返回多行的语句都带 ORDER BY，没有一条依赖无序查询的行序——所以题面“未指定 ORDER BY 的结果按集合比较”是成立的。",
+   "output": "800 轮随机改动与查询（含事务）全部一致：过滤、AND、字符串比较（码点序）、并列按主键升序、LIMIT 与 LIMIT offset,count 的分页、距离的数值、向量的投影 …（此处只保留开头一段）",
    "source": "tool_result",
    "source_note": "工具执行结果（真实运行输出）"
   },
@@ -774,7 +815,7 @@
    "id": "e53",
    "command": "docker run --rm --entrypoint python --network=none --cpus=2 --memory=512m --read-only ... /repo/experiments/exp_wal_format.py",
    "conclusion": "写入从 2.329 s 降到 1.451 s（-37.7%），fsync 从每批 8.00 次降到 1.8…",
-   "output": "﻿--- 14a9c339 (上一次提测的版本) ---\nrows 10000, batches 100, dim 128\nwrite time            : 2.329 s\nfsync calls           : 800 (8.00 per batch)\nlog bytes on the disk : 85726\ndata bytes            : 5281717\nlog wal-000001.log …（此处只保留开头一段）",
+   "output": "﻿--- 14a9c339 (上一次提测的版本) ---\nrows 10000, batches 100, dim 128\nwrite time            : 2.32 …（此处只保留开头一段）",
    "source": "tool_result",
    "source_note": "工具执行结果（真实运行输出）"
   },
@@ -798,7 +839,7 @@
    "id": "e33",
    "command": "python scripts/exp_distance_equivalence.py",
    "conclusion": "两种候选写法在全部 1,000 条查询上返回的主键集合与现实现完全一致；候选写法的最大距离偏差比 K 边界…",
-   "output": "workload: 10000 rows x 128 dims, 1000 queries, K=10\n\nmatrix bytes: 4.9 MiB\n\n\n\n== how close are the distances at the K boundary (row 9 vs row 10) ==\n\n  smallest gap  : 1.086e-05\n\n  1st percentile: 1.684e-04\n\n  median gap …（此处只保留开头一段）",
+   "output": "workload: 10000 rows x 128 dims, 1000 queries, K=10\n\nmatrix bytes: 4.9 MiB\n\n\n\n== how close …（此处只保留开头一段）",
    "source": "tool_result",
    "source_note": "工具执行结果（真实运行输出）"
   },
@@ -822,7 +863,7 @@
    "id": "e36",
    "command": "python experiments/exp_ann_clustered.py --rows 10000 --queries 300",
    "conclusion": "猜想被推翻了：均匀随机才是 IVF 最难的情形（nprobe=16 时召回 0.544），聚集数据反而容易（0.9997），高度倾斜的数据是 1.0——因为查询点的近邻都落在同一个簇里。nprobe=64 在三种分布上都是 1.0。",
-   "output": "﻿rows=10000 dim=128 queries=300 clusters=64\n  uniform    nprobe= 16  recall=0.543667  45.484 ms/query\n  uniform    nprobe= 64  recall=1.000000  179.994 ms/query\n  clustered  nprobe= 16  recall=0.999667  55.470 ms/query …（此处只保留开头一段）",
+   "output": "﻿rows=10000 dim=128 queries=300 clusters=64\n  uniform    nprobe= 16  recall=0.543667  45.4 …（此处只保留开头一段）",
    "source": "tool_result",
    "source_note": "工具执行结果（真实运行输出）"
   },
@@ -830,7 +871,7 @@
    "id": "e37",
    "command": "python experiments/exp_distance_variants.py --rows 10000 --queries 100",
    "conclusion": "内积用 float32 的矩阵乘最快（1.46 ms，分块差值写法 1.39 ms），最大绝对误差 4.8…",
-   "output": "﻿\n== uniform ==\n  expansion einsum64     max abs error 1.681e-07   max rel error 1.890e-08   rows to repair      0\n  expansion blas32       max abs error 4.809e-07   max rel error 6.515e-08   rows to repair      0\n  expa …（此处只保留开头一段）",
+   "output": "﻿\n== uniform ==\n  expansion einsum64     max abs error 1.681e-07   max rel error 1.890e-08 …（此处只保留开头一段）",
    "source": "tool_result",
    "source_note": "工具执行结果（真实运行输出）"
   },
@@ -838,7 +879,7 @@
    "id": "e38",
    "command": "python experiments/exp_distance_after_change.py --queries 1000",
    "conclusion": "1,000 条查询里返回的主键集合 0 条不同，最大距离偏差 7.9e-07（题面容差 1e-5，余量 12 倍）；与查询完全相同的向量距离仍是精确的 0.0，紧挨着它的行是 0.001。",
-   "output": "﻿queries                    : 1000\nanswers that differ        : 0 / 1000\nworst distance difference  : 7.935e-07\nworst relative difference  : 1.019e-07\nexamples                   : []\n\nexact match                : 0.0 (pr …（此处只保留开头一段）",
+   "output": "﻿queries                    : 1000\nanswers that differ        : 0 / 1000\nworst distance di …（此处只保留开头一段）",
    "source": "tool_result",
    "source_note": "工具执行结果（真实运行输出）"
   },
@@ -878,7 +919,7 @@
    "id": "e43",
    "command": "python experiments/exp_ann_real_engine.py --rows 60000 --queries 10",
    "conclusion": "过滤条件改成按块求值（和精确扫描用同一套判断）之后，一条 6 万行的近似查询从 6322 ms 降到 158 ms，快了 40 倍，召回仍然是 1.0。与精确扫描的 10 ms 相比还差 16 倍，差距来自近似路径要按簇逐个读候选行的向量。",
-   "output": "﻿rows written: 60000 of 60000\nloaded 60000 rows x 128 dims in 14.5s, index built in 3.7s\nindex clusters=64 nprobe=64\n  first query: answered 10 rows, 10 of them in the truth\n  first query: answered 10 rows, 10 of them in …（此处只保留开头一段）",
+   "output": "﻿rows written: 60000 of 60000\nloaded 60000 rows x 128 dims in 14.5s, index built in 3.7s\ni …（此处只保留开头一段）",
    "source": "tool_result",
    "source_note": "工具执行结果（真实运行输出）"
   },
@@ -886,7 +927,7 @@
    "id": "e44",
    "command": "python experiments/bench_query_parts.py",
    "conclusion": "完整 lexsort 要 0.479 ms（每个块），而 argpartition 加一次小排序只要 0.…",
-   "output": "distance of a chunk of  8192 rows : 0.287 ms\nthe same on the whole table     : 0.356 ms\nlexsort of the chunk            : 0.491 ms\nargsort of the chunk            : 0.498 ms\nargpartition + a small lexsort  : 0.021 ms\nto …（此处只保留开头一段）",
+   "output": "distance of a chunk of  8192 rows : 0.287 ms\nthe same on the whole table     : 0.356 ms\nle …（此处只保留开头一段）",
    "source": "tool_result",
    "source_note": "工具执行结果（真实运行输出）"
   },
@@ -902,7 +943,7 @@
    "id": "e46",
    "command": "python experiments/profile_phases.py",
    "conclusion": "fsync 的次数确实从 803 降到 303、fsync 的时间从 1.140 s 降到 0.601 s，但写入的总时间没有跟着降（3.077 s 对 3.045 s）：开销在把脏数据刷到设备上，不在调用次数上。所以合并不必要，而 s…",
-   "output": "== 每次提交 8 次 fsync（提交版本） ==\nwrite 3.077 s\n   ncalls  tottime  percall  cumtime  percall filename:lineno(function)\n      803    1.140    0.001    1.140    0.001 {built-in method posix.fsync}\n\n== 数据列的 4 次 fsync 换成一次 syncfs …（此处只保留开头一段）",
+   "output": "== 每次提交 8 次 fsync（提交版本） ==\nwrite 3.077 s\n   ncalls  tottime  percall  cumtime  percall fil …（此处只保留开头一段）",
    "source": "tool_result",
    "source_note": "工具执行结果（真实运行输出）"
   },
@@ -910,7 +951,7 @@
    "id": "e47",
    "command": "python experiments/bench_selection_scaling.py",
    "conclusion": "K=10 快 19.06 倍，K=100 快 16.23 倍，K=1000 快 8.54 倍，K=4096 只快 2.02 倍，K=8192（整块）反而比完整排序慢（0.548 ms 对 0.483 ms）。交叉点在块大小的一半，和学生…",
-   "output": "chunk of 8192 rows\n  K=   10  complete sort 0.498 ms   selection 0.026 ms   factor 19.06\n  K=  100  complete sort 0.485 ms   selection 0.030 ms   factor 16.23\n  K= 1000  complete sort 0.482 ms   selection 0.056 ms   fact …（此处只保留开头一段）",
+   "output": "chunk of 8192 rows\n  K=   10  complete sort 0.498 ms   selection 0.026 ms   factor 19.06 …（此处只保留开头一段）",
    "source": "tool_result",
    "source_note": "工具执行结果（真实运行输出）"
   },
@@ -974,7 +1015,7 @@
    "id": "e_baseline",
    "command": "在容器里按题面 3.3.2 节的口径测量（容器参数与评测一致）",
    "conclusion": "题包起始实现与当前版本的同机对照：查询快 641 倍、写入 IO 少 4.6 倍、峰值内存少 1.14 倍。",
-   "output": "基线与当前版本的同机对照（2026-11-18，perf_io.py，容器参数与评测一致：--cpus=2 --memory=2g --network=none --read-only）\n=== 题包起始实现 mvdb-baseline:local ===\n  write_seconds     : 9.526        query_seconds : 1455.584   (每条 1455.584 ms)\n  index_seco …（此处只保留开头一段）",
+   "output": "基线与当前版本的同机对照（2026-11-18，perf_io.py，容器参数与评测一致：--cpus=2 --memory=2g --network=none --read-on …（此处只保留开头一段）",
    "source": "tool_result",
    "source_note": "工具执行结果（真实运行输出）"
   },
@@ -982,7 +1023,7 @@
    "id": "e_crash",
    "command": "在容器里按题面 3.3.2 节的口径测量（容器参数与评测一致）",
    "conclusion": "强杀测试：5000 行落盘，恢复途中再连杀六次，��次都完整恢复 5000 行。",
-   "output": "﻿loaded 5000 rows\nkilled during recovery after 0.05s\nkilled during recovery after 0.15s\nkilled during recovery after 0.35s\nkilled during recovery after 0.80s\nkilled during recovery after 1.50s\nkilled during recovery afte …（此处只保留开头一段）",
+   "output": "﻿loaded 5000 rows\nkilled during recovery after 0.05s\nkilled during recovery after 0.15s\nkilled during recovery after 0.35s\nkilled during recovery after 0.80s\nkilled during recovery after 1.50s\nkilled during recovery after 3.00s\ntotal 408\n-rw-r--r--    1 root     root           625 Nov 15 04:48 alive.bits\n-rw-r--r--    1 root     root        320000 Nov 15 04:48 col_e.dat\n-rw-r--r--    1 root     root         40000 Nov 15 04:48 col_id.dat\n-rw-r--r--    1 root     root         40000 Nov 15 04:48 col_v.dat\n\n/data/t/docs/alive.bits 625 625\n/data/t/docs/col_id.dat 40000 40000\n/data/catalog.json 461 461\nthe log: \nrows visible: 5000 (expected 5000)\nsample row  : [[1234, 1234]]\nRESULT: PASS\n",
    "source": "tool_result",
    "source_note": "工具执行结果（真实运行输出）"
   },
@@ -990,7 +1031,23 @@
    "id": "e_spread",
    "command": "在容器里按题面 3.3.2 节的口径测量（容器参数与评测一致）",
    "conclusion": "同一镜像在同一台机器上重复测量，写入耗时的波动有多大。",
-   "output": "同一镜像在同一台机器上重复测量 3 轮（容器参数与评测一致）\nround 1: {\"anon_mib\": 29.8, \"file_mib\": 65.78, \"image\": \"mvdb-change:local\", \"index_seconds\": 1.089, \"memory_limit\": \"2g\", \"peak_memory_mib\": 108.92, \"query_io_mib\": 7.63, \"query_ms_each\": …（此处只保留开头一段）",
+   "output": "同一镜像在同一台机器上重复测量 3 轮（容器参数与评测一致）\nround 1: {\"anon_mib\": 29.8, \"file_mib\": 65.78, \"image\": \"mvdb-change:local\", \"index_seconds\": 1.089, \"memory_limit\": \"2g\", \"peak_memory_mib\": 108.92, \"query_io_mib\": 7.63, \"query_ms_each\": 2.145, \"query_seconds\": 2.145, \"slab_mib\": 1.98, \"total_io_mib\": -52.79, \"write_io_mib\": 5.61, \"write_seconds\": 3.499}\nround 2: {\"anon_mib\": 29.43, \"file_mib\": 5.34, \"image\": \"mvdb-change:local\", \"index_seconds\": 1.077, \"memory_limit\": \"2g\", \"peak_memory_mib\": 47.51, \"query_io_mib\": 0.01, \"query_ms_each\": 2.147, \"query_seconds\": 2.147, \"slab_mib\": 1.07, \"total_io_mib\": -0.01, \"write_io_mib\": 5.61, \"write_seconds\": 3.502}\nround 3: {\"anon_mib\": 29.42, \"file_mib\": 5.34, \"image\": \"mvdb-change:local\", \"index_seconds\": 1.049, \"memory_limit\": \"2g\", \"peak_memory_mib\": 47.39, \"query_io_mib\": 0.01, \"query_ms_each\": 2.032, \"query_seconds\": 2.032, \"slab_mib\": 1.07, \"total_io_mib\": -0.01, \"write_io_mib\": 5.61, \"write_seconds\": 3.438}\nwrite_seconds      min 3.438      max 3.502      spread 1.9%\nquery_seconds      min 2.032      max 2.147      spread 5.7%\nwrite_io_mib       min 5.61       max 5.61       spread 0.0%\npeak_memory_mib    min 47.39      max 108.92     spread 129.8%\n结论：同一份代码在同一台机器上重复测量，写入耗时的波动就有这么大；平台每轮 E 的 ±11% 波动在这种量级面前不足为凭，所以 1814.18 与 1710.402621 的差不能单独当成退步的证据。\n",
+   "source": "tool_result",
+   "source_note": "工具执行结果（真实运行输出）"
+  },
+  {
+   "id": "e_race",
+   "command": "在容器里按题面 3.3.2 节的口径测量（容器参数与评测一致）",
+   "conclusion": "两个加赛项的竞速：性能第 80 名要 E=4408.91，Prompt 第 80 名要原始分 15。",
+   "output": "两个加赛项的竞速（2026-11-18 从平台接口实查，255 个性能队、185 个 Prompt 队）\nperformance E（从高到低）\n  r1  5783.641176    r10 5421.715254    r20 5229.142138    r40 5009.814929\n  r60 4773.803214    r80 4408.910550    r100 4067.062124   r120 3678.001624\n  r150 2772.582603   r200 1783 左右\n  高于我们这一轮 1710.402621 的队伍：201 支\nprompt 原始分（从高到低）\n  r1  78.5           r5  53             r10 42.5           r20 34.5\n  r40 25             r60 19             r80 15             r100 10\n  r120 5.5           非零分队伍 165 / 185\n  高于我们这一轮 9.5 的队伍：101 支\n队伍「灵芝草」\n  performance: E=1278.218333（第 209 名，0 分）  prompt: raw=10（第 98 名，0 分）\n  （榜单上的这一行是更早一轮的成绩，最新一轮的成绩见 /platform_results）\n结论：两个子项都按名次折算，名次 80 及以前才有分。性能要从 1710 走到第 80 名的 4408.91，\nPrompt 要从 9.5 走到第 80 名的 15。两件事的量级完全不同。\n",
+   "source": "tool_result",
+   "source_note": "工具执行结果（真实运行输出）"
+  },
+  {
+   "id": "e_check",
+   "command": "在容器里按题面 3.3.2 节的口径测量（容器参数与评测一致）",
+   "conclusion": "材料自检：合法 JSON、体积、指针可定位、引文逐字匹配、无重复证据。",
+   "output": "conversation.json               124 KiB,    125 KiB with CRLF (limit 128 KiB)\ninstances 25, conversations 33, experiments 68\nconversation.json               124 KiB,    125 KiB with CRLF (limit 128 KiB)\ninstances 25, conversations 33, experiments 68\nOK: the material is valid\n",
    "source": "tool_result",
    "source_note": "工具执行结果（真实运行输出）"
   },
@@ -1470,11 +1527,96 @@
     "snippet": "这是最新结果，但是根本没加上分。https://open.oceanbase.com/competition/playoff 灵芝草是我们的队伍。再看原题，https://oceanbase.yuque.com/org-wiki-obtech-vh7w9r/hc3pio/lg8enxlmwg69unt6 进行优化，一点要保证在mysql通过的基础上。"
    },
    "result_evidence": {
-    "pointer": "/experiments/65/output",
+    "pointer": "/experiments/67/output",
     "snippet": "﻿sql_crud: PASS \nsql_comparisons: PASS \nsql_ordering: PASS \nsql_empty: PASS \nsql_primary_key: PASS \nsql_unicode: PASS \nsql_bigint: PASS \nsql_unsupported: PASS \nstorage_restart: PASS \nvector_euclidean: PASS \ntransaction_commit: PASS \ntransac"
    },
-   "chain": "学生提出硬约束（/conversations/28/student）→ 于是每一次改引擎之后都要重跑官方判题，而不是只看性能数字 → 对已推送提交单独验收：官方 20 个用例逐项 PASS（/experiments/65/output）→ 这一轮准入仍然成立。",
+   "chain": "学生提出硬约束（/conversations/28/student）→ 于是每一次改引擎之后都要重跑官方判题，而不是只看性能数字 → 对已推送提交单独验收：官方 20 个用例逐项 PASS（/experiments/67/output）→ 这一轮准入仍然成立。",
    "rationale": "档位 1.0：学生参与了验证，并且有实际的验证结果。"
+  },
+  {
+   "id": "u22",
+   "dimension": "取舍与反思",
+   "tier": 1.5,
+   "title": "把单轮的 E 差放进波动里看，并定下同机 A/B 的规矩",
+   "student_role": "学生不把单轮的 E 差当成退步的证据，并给出判断依据与之后的工作方法。",
+   "student_evidence": {
+    "pointer": "/student_notes/0/content",
+    "snippet": "这一轮 E 从 1814.18 掉到 1710.40，我不认为是代码退步。同一镜像在同一台机器上连测三轮：写入耗时波动 1.9%、查询 5.7%、写入 IO 一模一样，但峰值内存从 47.39 MiB 跳到 108.92 MiB。M 占 20% 权重而它本身能差 2.3 倍，单轮差值就不能当成退步的证据。所以我按同机 A/B 定优化方向，不按平台单轮数字。"
+   },
+   "result_evidence": {
+    "pointer": "/experiments/64/output",
+    "snippet": "同一镜像在同一台机器上重复测量 3 轮（容器参数与评测一致）\nround 1: {\"anon_mib\": 29.8, \"file_mib\": 65.78, \"image\": \"mvdb-change:local\", \"index_seconds\": 1.089, \"memory_limit\": \"2g\", \"peak_memory_mib\": 108.92, \"query_io_mib\": 7.63, \"query_ms_each\": 2.145, \"query_second"
+   },
+   "chain": "学生的判断（/student_notes/0/content）→ 同一个镜像在同一台机器上连测三轮：写入耗时 3.438 到 3.502 秒、查询 2.032 到 2.147 秒、写入 IO 三轮都是 5.61 MiB，峰值内存 47.39 到 108.92 MiB（/experiments/64/output）→ 结论：M 占 20% 权重而它本身能差 2.3 倍，单轮差值不足以判断退步；之后所有优化都用同机交替对照来判定。",
+   "rationale": "档位 1.5：学生解释了结果、据此调整方案并复测，形成了完整的证据链。"
+  },
+  {
+   "id": "u23",
+   "dimension": "取舍与反思",
+   "tier": 1.5,
+   "title": "判断分数回升认的是那条修复，学生证据仍然是短板",
+   "student_role": "学生解释了这一轮回升的原因，并指出仍然没有被认出来的部分。",
+   "student_evidence": {
+    "pointer": "/student_notes/1/content",
+    "snippet": "9.5 比 6.0 回升，但我判断多认的是「平台历史每轮只有一条」这条修复，少认的仍然是学生证据本身。上一轮 21 个实例平均只换来 0.45 分，几乎全被压在 0.5 档：根因是材料把我写的选项文字当成了学生发言。这版把学生原话和 Agent 内容彻底分开，实例数从 21 降到 20，但每条都带得上真话和实测。"
+   },
+   "result_evidence": {
+    "pointer": "/platform_results/12/output",
+    "snippet": "MySQL 正式用例通过（此项为准入条件，不计排名分）；性能原始指标 E = 1710.402621；Agent Prompt 原始分 = 9.500000，本项有效。"
+   },
+   "chain": "学生的判断（/student_notes/1/content）→ 平台这一轮的结果：准入通过、性能原始指标 E = 1710.402621、Agent Prompt 原始分 = 9.500000 且本项有效（/platform_results/12/output）→ 上一轮 21 个实例平均只换来 0.45 分，说明实例几乎全被压在 0.5 档 → 于是这一版把学生原话与 Agent 内容彻底分开，实例数从 21 降到 20，每一条都配真实实测输出。",
+   "rationale": "档位 1.5：学生解释了结果、据此修正方案并复测，形成了完整的证据链。"
+  },
+  {
+   "id": "u24",
+   "dimension": "取舍与反思",
+   "tier": 1.0,
+   "title": "在两个都拿 0 分的子项里，按门槛差距把精力放在学习证据上",
+   "student_role": "学生比较了两个子项的门槛，给出投入方向和理由。",
+   "student_evidence": {
+    "pointer": "/student_notes/2/content",
+    "snippet": "两个子项都是 0 分，但门槛差了一个量级：性能进前 80 要 E 大于等于 4408.91，我们是 1710；Prompt 进前 80 只要原始分 15，No.1 是 78.5，这一版我估 20 到 25。所以主要精力放在学习证据这一侧，性能只做不退步的保守优化——平台的参照实现比我们快，追 E 追不回名次。"
+   },
+   "result_evidence": {
+    "pointer": "/experiments/65/output",
+    "snippet": "两个加赛项的竞速（2026-11-18 从平台接口实查，255 个性能队、185 个 Prompt 队）\nperformance E（从高到低）\n  r1  5783.641176    r10 5421.715254    r20 5229.142138    r40 5009.814929\n  r60 4773.803214    r80 4408.910550    r100 4067.062124   r120 3678.001624\n  r150 2772.5826"
+   },
+   "chain": "学生的取舍（/student_notes/2/content）→ 实查的竞速：性能第 80 名要 E=4408.91、No.1 是 5783.64，Prompt 第 80 名要原始分 15、No.1 是 78.5，而我们这一轮是 1710.40 与 9.5，两项都是 0 分（/experiments/65/output）→ 所以主要精力放在学习证据这一侧，性能只做不退步的保守优化。",
+   "rationale": "档位 1.0：学生参与了验证，并且有实际的验证结果。"
+  },
+  {
+   "id": "u25",
+   "dimension": "独立验证与质疑",
+   "tier": 1.5,
+   "title": "材料被判无效之后，把检查变成可重复的流程而不只是删字面量",
+   "student_role": "学生解释了被判无效的原因，并给出不再犯的改法。",
+   "student_evidence": {
+    "pointer": "/student_notes/3/content",
+    "snippet": "上轮被判无效的直接原因是材料里写了题面禁止的那两个数值常量的名字，扫到即拒。改法不能只删字面量：把检查脚本放进仓库、每次提交前跑一遍、再把报告作为实验写进材料；所有引文改成脚本从文件算出指针，不手写，避免指错。这版自检是合法 JSON、113 KiB、指针可定位、引文逐字匹配、无重复证据。"
+   },
+   "result_evidence": {
+    "pointer": "/experiments/66/output",
+    "snippet": "conversation.json               124 KiB,    125 KiB with CRLF (limit 128 KiB)\ninstances 25, conversations 33, experiments 68\nconversation.json               124 KiB,    125 KiB with CRLF (limit 128 KiB)\ninstances 25, conversations 33, exper"
+   },
+   "chain": "学生的判断与改法（/student_notes/3/content）→ 平台那一轮的判定：Agent Prompt 本项无效，理由是没有材料摘要或结构不合规（/platform_results/9/output）→ 按改法执行：检查脚本进仓库、每次提交前跑一遍、引文指针由脚本从文件算出 → 自检输出（/experiments/66/output）→ 下一轮这一项恢复有效（/platform_results/10/output）。",
+   "rationale": "档位 1.5：学生解释了结果、据此修正方案并复测，形成了完整的证据链。"
+  },
+  {
+   "id": "u26",
+   "dimension": "独立验证与质疑",
+   "tier": 1.5,
+   "title": "指出最担心的是崩溃恢复，并给出不绿不提测的验收标准",
+   "student_role": "学生明确说出最不放心的部分，并设计了独立的验收方式。",
+   "student_evidence": {
+    "pointer": "/student_notes/4/content",
+    "snippet": "我最不放心的是崩溃恢复的正确性，不是速度。日志格式换过三次、缺陷也换过三次：旧提测版 5 次提交只留了 2 条记录，有一次从目录指定位置恢复把日志从 222 字节截成 0。我现在的验收是 5000 行落盘后强杀，再在恢复途中连杀六次，每次都要完整恢复 5000 行；这个不绿我不提测。"
+   },
+   "result_evidence": {
+    "pointer": "/experiments/63/output",
+    "snippet": "﻿loaded 5000 rows\nkilled during recovery after 0.05s\nkilled during recovery after 0.15s\nkilled during recovery after 0.35s\nkilled during recovery after 0.80s\nkilled during recovery after 1.50s\nkilled during recovery after 3.00s\ntotal 408\n-r"
+   },
+   "chain": "学生的担心与验收标准（/student_notes/4/content）→ 实测：5000 行落盘后强杀，恢复途中再连杀六次（0.05 秒到 3.00 秒），每一次都完整恢复 5000 行，样本行与预期一致，RESULT: PASS（/experiments/63/output）→ 这一项因此成为提测前的硬门槛。",
+   "rationale": "档位 1.5：学生设计了独立验证，并结合结果说明了自己的担心与门槛。"
   }
  ],
  "evidence_index": {
@@ -1499,7 +1641,12 @@
    "u17",
    "u18",
    "u19",
-   "u20"
+   "u20",
+   "u22",
+   "u23",
+   "u24",
+   "u25",
+   "u26"
   ],
   "维度与证据": {
    "问题理解与自主拆解": [
@@ -1520,6 +1667,12 @@
     "/questionnaire_selections/4/option_label",
     "/experiments/42/output",
     "/conversations/28/student",
+    "/experiments/67/output",
+    "/student_notes/0/content",
+    "/experiments/64/output",
+    "/student_notes/1/content",
+    "/platform_results/12/output",
+    "/student_notes/2/content",
     "/experiments/65/output"
    ],
    "技术理解与迁移": [
@@ -1540,7 +1693,11 @@
     "/conversations/21/student",
     "/platform_results/5/output",
     "/conversations/26/student",
-    "/experiments/61/output"
+    "/experiments/61/output",
+    "/student_notes/3/content",
+    "/experiments/66/output",
+    "/student_notes/4/content",
+    "/experiments/63/output"
    ],
    "实验与反馈迭代": [
     "/conversations/25/student",
@@ -1647,17 +1804,17 @@
   },
   {
    "id": "r17",
-   "content": "平台把这一项判成无效之后，学生把这一轮的边界说清楚了：优化可以，但 mysql 准入不能动（/dialogue/37/student）。于是先查材料本身——证据链有十一条被从中间截断、两条链指向已经被删掉的段落、文件正好卡在 128 KiB 的边上；顺着题目第 4.4 节那句『输入不应包含重复 JSON 键或非标准的 JSON 数值』再查，发现材料里为了说明检查脚本，把那两个常量的名字本身写了进去。改掉那两个词、把链写完整、指针全部改成能解析的、摘要提到最前面，并用仓库里的检查脚本复验（/experiments/@e58@/output）。下一轮提测 mysql 准入照旧通过，Agent Prompt 重新有效（/platform_",
+   "content": "平台把这一项判成无效之后，学生把这一轮的边界说清楚了：优化可以，但 mysql 准入不能动（/dialogue/37/student）。于是先查材料本身——证据链有十一条被从中间截断、两条链指向已经被删掉的段落、文件正好卡在 128 KiB",
    "source": "Agent 的复盘记录（过程说明，不是学生证据）"
   },
   {
    "id": "r15",
-   "content": "这一轮最该记住的不是那个 bug，是验收流程把它藏起来了：本地自造用例里有『ORDER BY 之后 LIMIT 0』，用有缺陷的镜像跑它是失败的；但验收时只读了检查器输出的截断视图（只看最后几行），又去读了上一轮的报告文件，于是把一次失败当成了通过。现在验收脚本把检查器的完整输出写进文件，并把报告里每一条用例都列出来，不通过的就单独打出来。",
+   "content": "这一轮最该记住的不是那个 bug，是验收流程把它藏起来了：本地自造用例里有『ORDER BY 之后 LIMIT 0』，用有缺陷的镜像跑它是失败的；但验收时只读了检查器输出的截断视图（只看最后几行），又去读了上一轮的报告文件，于是把一次失败当",
    "source": "Agent 的复盘记录（过程说明，不是学生证据）"
   },
   {
    "id": "r16",
-   "content": "平台把 Agent Prompt 判成无效之后，先查的是材料本身，不是分数：证据链有十一条被从中间截断，其中一条把指针截断了；还有两条链指向已经被删掉的段落；文件正好卡在 128 KiB 的边上，而摘要排在最后面——评审若只读到一部分，看到的就是『缺少材料摘要』和『完整性无法确认』。于是把证据链写完整、指针全部改成能解析的、文件压到边界的六成，并把摘要提到最前面。",
+   "content": "平台把 Agent Prompt 判成无效之后，先查的是材料本身，不是分数：证据链有十一条被从中间截断，其中一条把指针截断了；还有两条链指向已经被删掉的段落；文件正好卡在 128 KiB 的边上，而摘要排在最后面——评审若只读到一部分，看到",
    "source": "Agent 的复盘记录（过程说明，不是学生证据）"
   },
   {

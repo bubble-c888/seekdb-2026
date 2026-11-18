@@ -118,6 +118,32 @@ def check(path: Path) -> list:
             problems.append("an experiment does not name its source")
             break
 
+    # The platform reads the material by the source of every record.  The
+    # values it knows are the student, the agent and the result of a tool.
+    # A new value in that field made one round be rejected, so the values
+    # are checked here.
+    KNOWN = {"student", "agent", "tool_result"}
+    labels = set()
+    unknown = []
+
+    def walk(node):
+        if isinstance(node, dict):
+            for key, value in node.items():
+                if key == "source" and isinstance(value, str):
+                    labels.add(value)
+                    if value not in KNOWN:
+                        unknown.append(value)
+                walk(value)
+        elif isinstance(node, list):
+            for value in node:
+                walk(value)
+
+    walk(document)
+    if unknown:
+        problems.append(
+            "a source label that the platform does not know: " + ", ".join(sorted(set(unknown)))
+        )
+
     pointers = []
     for unit in document.get("learning_units", []):
         for key in ("student_evidence", "result_evidence"):
